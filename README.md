@@ -26,7 +26,7 @@ python setup.py install
 Базовый класс, представляющий полученные с телескопа сырые данные - BSAData.
 
 ```python
-from PyRAO.bsadata import BSAData
+from pyrao.bsadata import BSAData
 
 data = BSAData()
 ```
