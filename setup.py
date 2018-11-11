@@ -1,12 +1,22 @@
 """Setup.py module."""
-from setuptools import setup
+from setuptools import setup, find_packages, Extension
+try:
+    import numpy as np
+except ImportError:
+    import pip
+    if hasattr(pip, 'main'):
+        pip.main(['install', 'numpy'])
+    else:
+        import pip._internal as internal
+        internal.main(['install', 'numpy'])
+
 
 with open("README.md", 'r') as f:
     long_description = f.read()
 
 setup(
    name='pyrao',
-   version='0.1',
+   version='0.9',
    description='Toolkit designed to integrate BSA structures \
                 with the most recent world astronomic practices.',
    license="GNUv3",
@@ -14,7 +24,11 @@ setup(
    author='Alexander',
    # author_email='',
    # url='',
-   packages=['pyrao'],
+   packages=find_packages(),
    install_requires=['numpy', 'pandas', 'matplotlib', 'angles', 'astropy',
-                     'scipy']
+                     'scipy'],
+   ext_modules=[Extension("pyrao.integration.cinterp1d",
+                          ["pyrao/integration/cinterp1d.c"],
+                          include_dirs=[np.get_include()],
+                          build_dir="pyrao/integration")]
 )
