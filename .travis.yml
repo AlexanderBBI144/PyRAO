@@ -1,11 +1,9 @@
 os:
   - linux
-  - windows
+  - unix
 sudo: false
 language: python
 python:
-  - "3.5"
   - "3.6"
-  - "3.7"
 # command to run tests
 script: python setup.py install
