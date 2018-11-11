@@ -10,4 +10,8 @@ python:
   - "3.6"
   - "3.7"
 # command to run tests
+<<<<<<< HEAD
 script: python setup.py install
+=======
+script: make test
+>>>>>>> 9e723a0e6f0b966b71534398d211bc4fec018650
