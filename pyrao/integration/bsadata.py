@@ -6,6 +6,7 @@ calibrate and convert raw data files from BSA telescope.
 
 """
 import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,12 @@ from dateutil.parser import parse
 from .cinterp1d import cinterp1d
 from .coords import dej, local_sid, ra, za
 from .sigproc import write as sigproc_write
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG)
+
+logger = logging.getLogger(name="pyrao.integration.bsadata")
 
 
 class BSAData():
@@ -86,11 +93,6 @@ class BSAData():
         self.is_read = False
         self.is_calibrated = False
 
-    def _log(self, msg, level, force_print=False):
-        if self.verbose or force_print:
-            msg = '- ' * level + str(msg)
-            print(msg)
-
     def _lin_dt(self, start, stop, num):
         return np.array(pd.to_datetime(np.linspace(pd.Timestamp(start).value,
                                                    pd.Timestamp(stop).value,
@@ -117,7 +119,7 @@ class BSAData():
         conf_dates = (np.datetime64('2014-07-25') <= self.dt) * \
                      (self.dt < np.datetime64('2016-02-08'))
         if len(conf_dates) > 0:
-            self._log('Correcting rows with confused beams', 1)
+            logger.info('Correcting rows with confused beams')
             true_order = [0,  1,  2,  3,  4,  5,
                           6,  7,  8,  9,  10, 11,
                           12, 13, 14, 15, 16, 17,
@@ -146,6 +148,7 @@ class BSAData():
         """Parse header and read observations from .pnt or .pnthr files."""
         with open(self.path_to_data, 'rb') as f:
             # Read header
+            logger.info('Reading header')
             n = int(f.readline().decode('utf-8').split()[1])
             f.seek(0)
             header = {}
@@ -176,11 +179,17 @@ class BSAData():
             self.cfreq = float(header['fcentral'][0])
 
             # Read data
+            logger.info('Reading data')
             f.seek(4 * start, 1)
 
             dims = (self.nsamples, self.nbeams, self.nbands)
-            self.data = (np.fromfile(f, dtype='f', sep='', count=np.prod(dims))
+            self.data = (np.fromfile(f,
+                                     dtype='f4',
+                                     sep='',
+                                     count=np.prod(dims))
                            .reshape(dims))
+
+            logger.info(f'Data is read: {str(self.data.shape)}')
 
     def _read_csv(self, path_to_data, limits=None):
         raise NotImplementedError
@@ -224,7 +233,7 @@ class BSAData():
             Tuple of 2 indices: index to start and index to stop while reading.
 
         """
-        self._log("Reading data", 0)
+        logger.info("Reading data")
 
         if path_to_data is None:
             raise ValueError('path_to_data has to be specified.')
@@ -258,7 +267,7 @@ class BSAData():
 
     def _load_calb_txt(self):
         # ВОЗМОЖНО ТОЖЕ ПОМЕНЯТЬ ЛУЧИ
-        self._log("Reading calibration file", 1)
+        logger.info("Reading calibration file")
 
         with open(self.path_to_calb) as f:
             d = [[y.strip() for y in x.split('|')] for x in f.readlines()]
@@ -276,7 +285,7 @@ class BSAData():
             raise ValueError("Last date of data exceeds \
                               last date of calibration file.")
 
-        self._log("Parsing", 1)
+        logger.info("Parsing")
 
         small_signal = np.array([[list(map(float, y[1:-1].split(',')))
                                   for y in x[5:]]
@@ -290,7 +299,6 @@ class BSAData():
         t_gsh = np.array([x[3] for x in d[1::2]], dtype=float)[:,
                                                                np.newaxis,
                                                                np.newaxis]
-
         self.coef = (t_gsh - t_eq) / (big_signal - small_signal)
 
     def _load_calb_csv(self):
@@ -315,7 +323,7 @@ class BSAData():
             raise ValueError("You have to process data first")
 
         # Interpolate calibration series and apply them to data
-        self._log("Calibrating data", 0)
+        logger.info("Calibrating data")
 
         if path_to_calb is None:
             raise ValueError('path_to_calb has to be specified.')
@@ -329,7 +337,7 @@ class BSAData():
         elif extension == 'db':
             self._load_calb_db()
 
-        self._log("Interpolating and applying to data", 1)
+        logger.info("Interpolating and applying to data")
 
         self.data *= cinterp1d(self.calb_range_mjd, self.coef, self.mjd)
 
@@ -363,6 +371,7 @@ class BSAData():
             beams = np.arange(self.nbeams)
         assert max(beams) < self.nbeams
 
+        path_to_output += '/' if path_to_output[-1] != '/' else ''
         for ibeam, beam in enumerate(
                         np.moveaxis(self.data, 0, 1)[beams, :, :-1], beams[0]):
             header = {
@@ -389,14 +398,15 @@ class BSAData():
              'tsamp': self.resolution,
              'tstart': self.mjd[0]
             }
-            filename = ''.join(self.path_to_data
-                                   .split('/')[-1]
-                                   .split('.')[:-1]) + f'beam{ibeam}.fil'
-            path_to_output += '/' if path_to_output[-1] != '/' else ''
-            path_to_output += filename
-            self._log(f'Writing {beam.shape[1]} frequency bands \
-                        of {beam.shape[0]} samples to {path_to_output}', 0)
-            sigproc_write(path_to_output, header, beam)
+            filename = (path_to_output
+                        + ''.join(self.path_to_data
+                                      .split('/')[-1]
+                                      .split('.')[:-1])
+                        + f'beam{ibeam}.fil')
+
+            logger.info(f'Writing {beam.shape[1]} frequency bands '
+                        f'of {beam.shape[0]} samples to {filename}')
+            sigproc_write(filename, header, beam)
 
     def write(self, path_to_output, beams=None, output_type='fil'):
         """
@@ -414,9 +424,9 @@ class BSAData():
 
         """
         if output_type == 'fil':
-            self._write_fil(self, path_to_output, beams)
+            self._write_fil(path_to_output, beams)
         elif output_type == 'fits':
-            self._write_fits(self, path_to_output)
+            self._write_fits(path_to_output)
         else:
             raise ValueError("output_type must be one of the following: \
                               {'fil', 'fits'}")

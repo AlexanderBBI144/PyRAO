@@ -3,7 +3,7 @@ import numpy as np
 from scipy.constants import c
 
 
-def local_sid(self, mjd, lon):
+def local_sid(mjd, lon):
     """
     Calculate local sidereal time from Greenwich sidereal time.
 
@@ -30,7 +30,7 @@ def local_sid(self, mjd, lon):
     return np.radians(sid % 360 + np.degrees(lon))
 
 
-def za(self, beams, freqs):
+def za(beams, freqs):
     """
     Calculate zenith angle.
 
@@ -58,7 +58,7 @@ def za(self, beams, freqs):
     return za[33 + beams]
 
 
-def dej(self, lat, za):
+def dej(lat, za):
     r"""
     Calculate declination.
 
@@ -99,7 +99,7 @@ def dej(self, lat, za):
     return lat - za
 
 
-def ra(self, az, alt, lat, sid):
+def ra(az, alt, lat, sid):
     r"""
     Calculate right ascension.
 
