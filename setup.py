@@ -10,17 +10,12 @@ except ImportError:
         import pip._internal as internal
         internal.main(['install', 'numpy'])
 
-
-with open("README.md", 'r') as f:
-    long_description = f.read()
-
 setup(
    name='pyrao',
    version='0.9',
    description='Toolkit designed to integrate BSA structures \
                 with the most recent world astronomic practices.',
    license="GNUv3",
-   long_description=long_description,
    author='Alexander',
    # author_email='',
    # url='',
