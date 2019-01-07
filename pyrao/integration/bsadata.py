@@ -369,7 +369,8 @@ class BSAData():
 
         if beams is None:
             beams = np.arange(self.nbeams)
-        assert max(beams) < self.nbeams
+        if isinstance(beams, int):
+            beams = np.array([beams])
 
         path_to_output += '/' if path_to_output[-1] != '/' else ''
         for ibeam, beam in enumerate(
@@ -406,7 +407,7 @@ class BSAData():
 
             logger.info(f'Writing {beam.shape[1]} frequency bands '
                         f'of {beam.shape[0]} samples to {filename}')
-            sigproc_write(filename, header, beam)
+            sigproc_write(filename, header, np.flip(beam, 1))
 
     def write(self, path_to_output, beams=None, output_type='fil'):
         """
