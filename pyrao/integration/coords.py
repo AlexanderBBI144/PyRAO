@@ -55,7 +55,7 @@ def za(beams, freqs):
     za = np.zeros((nbeams_total, len(freqs)))
     for i in range(1, nbeams_total):
         za[i] = za[i-1] + c / (len_dipole * freqs * 1e6 * np.cos(za[i-1]))
-    return za[33 + beams]
+    return za[beams]
 
 
 def dej(lat, za):
