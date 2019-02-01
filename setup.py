@@ -26,16 +26,18 @@ configuration = dict(
     packages=find_packages(),
     install_requires=['numpy', 'pandas', 'matplotlib', 'angles', 'astropy',
                       'scipy'],
-    # include_package_data=True
+    zip_safe=False,
 )
 
-
+from distutils.core import setup, Extension
 if platform.system() == "Windows":
     configuration['include_package_data'] = True
 else:
+    configuration['packages'] = find_packages(exclude=['cinterp1d.py'])
     configuration['ext_modules'] = [Extension("pyrao.integration.cinterp1d",
                                               ["pyrao/integration/cinterp1d.c"],
                                                 include_dirs=[np.get_include()],
                                                 build_dir="pyrao/integration")]
+print(configuration)
 
 setup(**configuration)

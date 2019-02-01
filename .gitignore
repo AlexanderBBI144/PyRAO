@@ -1,0 +1,23 @@
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# pycache #
+###########
+__pycache__/
+
+# Build files #
+###############
+build/
+dist/
+pyrao.egg-info/
+
+# Jupyter checkpoints #
+###########
+.ipynb_checkpoints/
