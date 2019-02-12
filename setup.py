@@ -1,7 +1,7 @@
 """Setup.py module."""
-from setuptools import setup, find_packages, Extension
-import platform
-import warnings
+import sys
+from setuptools import setup, find_packages, Extension, command
+from setuptools.command.install import install
 
 try:
     import numpy as np
@@ -14,30 +14,50 @@ except ImportError:
         internal.main(['install', 'numpy'])
         import numpy as np
 
+class InstallCommand(install):
+    user_options = install.user_options + [
+        ('no-cython-build', None, None),
+    ]
+
+    def initialize_options(self):
+        install.initialize_options(self)
+        self.no_cython_build = None
+
+    def finalize_options(self):
+        install.finalize_options(self)
+
+    def run(self):
+        global no_cython_build
+        no_cython_build = self.no_cython_build
+        install.run(self)
+
 configuration = dict(
     name='pyrao',
-    version='0.9',
-    description='Toolkit designed to integrate BSA structures \
-                 with the most recent world astronomic practices.',
+    version='1.0',
+    description='Toolkit designed to integrate BSA structures '\
+                'with the most recent world astronomic practices.',
     license="GNUv3",
-    author='Alexander Somov',
+    author='Alexander S.',
     # author_email='',
     url='https://github.com/AlexanderBBI144/PyRAO/',
     packages=find_packages(),
     install_requires=['numpy', 'pandas', 'matplotlib', 'angles', 'astropy',
                       'scipy'],
     zip_safe=False,
+    cmdclass={
+        'install': InstallCommand,
+    }
 )
 
-from distutils.core import setup, Extension
-if platform.system() == "Windows":
+if '--no-cython-build' in sys.argv:
+    print('Installing for win')
     configuration['include_package_data'] = True
 else:
-    configuration['packages'] = find_packages(exclude=['cinterp1d.py'])
+    print('Installing for all')
+    exclude = ['*cinterp1d']
     configuration['ext_modules'] = [Extension("pyrao.integration.cinterp1d",
                                               ["pyrao/integration/cinterp1d.c"],
-                                                include_dirs=[np.get_include()],
-                                                build_dir="pyrao/integration")]
-print(configuration)
+                                              include_dirs=[np.get_include()],
+                                              build_dir="pyrao/integration")]
 
 setup(**configuration)
