@@ -19,5 +19,9 @@ dist/
 pyrao.egg-info/
 
 # Jupyter checkpoints #
-###########
+#######################
 .ipynb_checkpoints/
+
+# Jupyter files #
+#######################
+*.ipynb
