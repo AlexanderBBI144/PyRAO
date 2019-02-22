@@ -15,27 +15,206 @@ from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 
 # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__)  # , external_stylesheets=external_stylesheets)
-app.config['suppress_callback_exceptions']=True
+
 # Читаем данные
 n_samples = 1000
 
-def get_data(date_start, date_end):
-    path1 = '070712_05_00.pnt'
+date_str = "2012-07-07"
+def get_date():
+    return dt.strptime(date_str, '%Y-%m-%d')
+
+time = "05:00"
+data = None
+def get_data():
+    return data
+def update_data(date, time):
+    global data
+    path1 = '070712_05_00.pnt' #date[8:10]+date[5:7]+date[2:4]+'_'+time[0:2]+'_00.pnt'
     path2 = 'eq_1_6b_20120706_20130403.txt'
     path3 = './output/'
 
-    data = BSAData()
-    data.read(path1)
-    data.calibrate(path2)
+    _data = BSAData()
+    _data.read(path1)
+    _data.calibrate(path2)
+    data = _data
 
-    return data
+# ---------- Layout
 
-def build_main_graph(data):
+app.layout = html.Div(children=[
+    html.Div(
+        [
+            html.H3('Фильтры:', style={'marginLeft' : '50px'}),
+            html.Div(dcc.Dropdown(
+                id="filters-dropdown",
+                options=[
+                    {'label': 'New York City', 'value': 'NYC'},
+                    {'label': 'Montreal', 'value': 'MTL'},
+                    {'label': 'San Francisco', 'value': 'SF'}
+                ],
+                value=['MTL', 'NYC'],
+                multi=True
+            ), style={'marginLeft' : '50px', 
+                        'width': "500px"}),
+            html.Br(),
+            html.Label('График интенсивности радиосигнала для телескопа BSA', style={'marginLeft' : '50px'}),
+            dcc.Graph(
+                id='graph-1'
+            )
+        ],
+        className="columns",
+        style={'display': 'inline-block',
+            'vertical-align': 'top',
+            'width': '50%'}),
+
+    html.Div(
+        [
+            html.H3('Выберите дату и время: ', style={'marginLeft' : '50px'}),
+            html.Div([
+                dcc.DatePickerSingle(
+                    id='date-picker',
+                    min_date_allowed=get_date(),
+                    initial_visible_month=get_date(),
+                    date=get_date()
+                ),
+                dcc.Input(id='time-picker',
+                            type='time',
+                            style={
+                                'font-weight': '200',
+                                'font-size': '18px',
+                                'line-height': '28px',
+                                'margin': '0',
+                                'padding': '8px',
+                                'background': '#fff',
+                                'position': 'relative',
+                                'display': 'inline-block',
+                                'width': '100px',
+                                'vertical-align': 'middle'
+                            },
+                            value=time
+                ),
+                html.Button('Показать', id='datetime-button', style={
+                                'width': '120px',
+                                'height': '50px',
+                            }),
+                html.Br(),
+                html.Br(),
+                html.Div(id='datetime-label')
+            ], style={'marginLeft' : '50px'}),
+            html.Br(),
+            html.H3('Задайте номер луча: ', style={'marginLeft' : '50px'}),
+            html.Div([
+                dcc.Input(id='ray-number-input',
+                            type='text',
+                            style={
+                                'font-weight': '200',
+                                'font-size': '18px',
+                                'line-height': '32px',
+                                'margin': '0',
+                                'padding': '8px',
+                                'background': '#fff',
+                                'position': 'relative',
+                                'display': 'inline-block',
+                                'width': '100px',
+                                'vertical-align': 'middle'
+                            },
+                            value=1
+                ),
+                html.Button('Показать', id='ray-button', style={
+                                'width': '120px',
+                                'height': '50px',
+                            })
+            ], style={'marginLeft' : '50px'}),
+            dcc.Graph(
+                id='graph-2'
+            ),
+            dcc.Graph(
+                id='graph-3'
+            ),
+            html.Div(id='placeholder')
+        ],
+    className="columns",
+    style={'display': 'inline-block',
+        'vertical-align': 'top',
+        'width': '50%'})
+])
+    
+# ---------- Callbacks
+
+# 1. updating datetime label
+
+@app.callback(
+    dash.dependencies.Output('datetime-label', 'children'),
+    [dash.dependencies.Input('datetime-button', 'n_clicks')],
+    [dash.dependencies.State('date-picker', 'date'), dash.dependencies.State('time-picker', 'value')])
+def update_datetime_label(n_clicks, date, value):
+    if date is not None and value is not None :
+        string_prefix = 'Данные показаны для: '
+        string = string_prefix + date + " " + value
+        date = date
+        time = value
+        print(string)
+        return string
+
+# 2. reading data from date time and updating 1st graph
+
+@app.callback(
+    dash.dependencies.Output('graph-1', 'figure'),
+    [dash.dependencies.Input('datetime-button', 'n_clicks')],
+    [dash.dependencies.State('date-picker', 'date'), dash.dependencies.State('time-picker', 'value')])
+def update_graph1(n_clicks, date, value):
+    if date is not None and value is not None :
+        # string_prefix = 'Данные показаны для: '
+        # string = string_prefix + date + " " + value
+        _date = get_date()
+        update_data(_date, time)
+        _data = get_data()
+        fig = setup_main_praph(_data)
+        return fig
+
+
+# 3. updating 2nd graph
+
+@app.callback(
+    dash.dependencies.Output('graph-2', 'figure'),
+    [dash.dependencies.Input('ray-button', 'n_clicks')],
+    [dash.dependencies.State('ray-number-input', 'value')])
+def update_graph2(n_clicks, value):
+    if value is not None:
+        print(f"Ray number changed to: {value}")
+        _data = get_data()
+        fig = setup_one_ray_graph(_data, int(value))
+        return fig
+
+# 4. updating 3nd graph
+
+@app.callback(
+    dash.dependencies.Output('graph-3', 'figure'),
+    [dash.dependencies.Input('ray-button', 'n_clicks')],
+    [dash.dependencies.State('ray-number-input', 'value')])
+def update_graph3(n_clicks, value):
+    if value is not None:
+        print(f"Ray number changed to: {value}")
+        _data = get_data()
+        fig = setup_detailed_ray_graph(_data, int(value))
+        return fig
+
+
+@app.callback(
+    dash.dependencies.Output('placeholder', 'children'),
+    [dash.dependencies.Input('filters-dropdown', 'value')])
+def update_output(value):
+    print(value)
+
+
+
+# ---------- Functions
+
+def setup_main_praph(_data):
     n_channels = 48
     # Для начала можно вывести порядка 1000 точек в каждом луче
-    data_trunc = data.data[:n_samples,:n_channels, 0]  # Обрезанные данные
+    data_trunc = _data.data[:n_samples,:n_channels, 0]  # Обрезанные данные
     # data_trunc[500:510, 5] = 2000
-    times = pd.Series(data.dt[:n_samples])  # Список datetime наблюдений
+    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
 
     ch_names = (np.arange(n_channels) + 1).astype(str)  # Названия лучей
     # Сетка расположения лучей на графике
@@ -88,11 +267,58 @@ def build_main_graph(data):
     fig['layout'].update(annotations=annotations)
     return fig
 
-def build_detailed_rays_graph(data, ray_number=1):
+
+def setup_one_ray_graph(_data, ray_number=1):
+    ray_number = ray_number - 1
+    data_trunc = _data.data[:n_samples, ray_number, 0]  # Обрезанные данные
+    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
+
+    # Сетка расположения лучей на графике
+    domain = [1, 0]
+
+    # Список графиков лучей
+    trace = Scattergl(x=times,
+                        y=data_trunc,
+                        xaxis=f'x1',
+                        yaxis=f'y1',
+                        line = dict(
+                            color = ('rgb(0, 0, 255)'),
+                            width = 0.7
+                            )
+                        )
+
+    # Создание графика
+
+    fig = tools.make_subplots(rows=1, cols=1, specs=[[{}]],
+                            shared_xaxes=True, shared_yaxes=True,
+                            vertical_spacing=-5, print_grid=False)
+
+    
+    fig.append_trace(trace, 1, 1)
+    fig['layout'].update({f'yaxis1': YAxis(
+                                {
+                                    'domain': np.flip(domain, axis=0),
+                                    'showticklabels': True,
+                                    'zeroline': False,
+                                    'showgrid': False,
+                                    'automargin': False
+                                }),
+                        'showlegend': False,
+                        'margin': dict(t = 50)
+                        })
+
+    fig['layout'].update(autosize=False, height=300)
+    fig['layout']['xaxis'].update(side='top')
+    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
+    return fig    
+
+
+def setup_detailed_ray_graph(_data, ray_number=1):
+    ray_number = ray_number - 1
     n_channels = 7
     # Для начала можно вывести порядка 1000 точек в каждом луче
-    data_trunc = data.data[:n_samples, ray_number, :]  # Обрезанные данные
-    times = pd.Series(data.dt[:n_samples])  # Список datetime наблюдений
+    data_trunc = _data.data[:n_samples, ray_number, :]  # Обрезанные данные
+    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
 
     ch_names = (np.arange(n_channels) + 1).astype(str)  # Названия лучей
     # Сетка расположения лучей на графике
@@ -145,151 +371,6 @@ def build_detailed_rays_graph(data, ray_number=1):
     fig['layout'].update(annotations=annotations)
     return fig
 
-def build_one_ray_graph(data, ray_number=1):
-    data_trunc = data.data[:n_samples, ray_number, 0]  # Обрезанные данные
-    times = pd.Series(data.dt[:n_samples])  # Список datetime наблюдений
-
-    # Сетка расположения лучей на графике
-    domain = [1, 0]
-
-    # Список графиков лучей
-    trace = Scattergl(x=times,
-                        y=data_trunc,
-                        xaxis=f'x1',
-                        yaxis=f'y1',
-                        line = dict(
-                            color = ('rgb(0, 0, 255)'),
-                            width = 0.7
-                            )
-                        )
-
-    # Создание графика
-
-    fig = tools.make_subplots(rows=1, cols=1, specs=[[{}]],
-                            shared_xaxes=True, shared_yaxes=True,
-                            vertical_spacing=-5, print_grid=False)
-
-    
-    fig.append_trace(trace, 1, 1)
-    fig['layout'].update({f'yaxis1': YAxis(
-                                {
-                                    'domain': np.flip(domain, axis=0),
-                                    'showticklabels': True,
-                                    'zeroline': False,
-                                    'showgrid': False,
-                                    'automargin': False
-                                }),
-                        'showlegend': False,
-                        'margin': dict(t = 50)
-                        })
-
-    fig['layout'].update(autosize=False, height=300)
-    fig['layout']['xaxis'].update(side='top')
-    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-    return fig    
-
-
-# Создание приложения
-def build_app(main_fig, second_fig, third_fig):
-    app.layout = html.Div(children=[
-            html.Div(
-                #'Graph',
-                #style=,
-                [
-                    html.Label('График интенсивности радиосигнала для телескопа BSA', style={'marginLeft' : '50px'}),
-                    dcc.Graph(
-                        id='beams-graph',
-                        figure=main_fig
-                    )
-                ],
-                className="columns",
-                style={'display': 'inline-block',
-                    'vertical-align': 'top',
-                    'width': '50%'}),
-
-            html.Div(
-                [
-                    html.Label('Выберите дату и время: ', style={'marginLeft' : '50px'}),
-                    html.Br(),
-                    html.Br(),
-                    html.Div([
-                        dcc.DatePickerSingle(
-                            id='my-date-picker-single',
-                            min_date_allowed=dt(2012, 7, 6),
-                            initial_visible_month=dt(2012, 7, 7),
-                            date=dt(2012, 7, 7)
-                        ),
-                        dcc.Input(id='my-time-picker-single',
-                                    type='time',
-                                    style={
-                                        'font-weight': '200',
-                                        'font-size': '18px',
-                                        'line-height': '24px',
-                                        'color': '#757575',
-                                        'margin': '0',
-                                        'padding': '8px',
-                                        'background': '#fff',
-                                        'position': 'relative',
-                                        'display': 'inline-block',
-                                        'width': '130px',
-                                        'vertical-align': 'middle'
-                                    },
-                                    value=dt.strptime('10:30', '%H:%M')
-                        ),
-                        html.Br(),
-                        html.Br(),
-                        html.Div(id='output-container-date-picker-single')
-                    ], style={'marginLeft' : '50px'}),
-                    html.Br(),
-                    html.Br(),
-                    html.Label('луч 1', id='one-ray-label' ,style={'marginLeft' : '50px'}),
-                    dcc.Graph(
-                        id='beams-graph3',
-                        figure=third_fig
-                    ),
-                    html.Br(),
-                    html.Label('луч 1 в 6 частотах', style={'marginLeft' : '50px'}),
-                    html.Br(),
-                    dcc.Graph(
-                        id='beams-graph2',
-                        figure=second_fig
-                    )
-                ],
-                className="columns",
-                style={'display': 'inline-block',
-                    'vertical-align': 'top',
-                    'width': '50%'})
-    ],
-    style={'marginTop' : '5%'})
-    
-
-@app.callback(
-    dash.dependencies.Output('output-container-date-picker-single', 'children'),
-    [dash.dependencies.Input('my-time-picker-single', 'value')
-    ])
-def update_output(value):
-    print(value)
-    # string_prefix = 'Данные показаны для: '
-    # if date is not None:
-    #     date = dt.strptime(date, '%Y-%m-%d')
-    #     date_string = date.strftime('%B %d, %Y')
-    #     return string_prefix + date_string
-# @app.callback(
-#     dash.dependencies.Output('beams-graph', 'figure'),
-#     [dash.dependencies.Input('apply-filter-button', 'n_clicks')])
-# def apply_math_filter(n_clicks):
-#     print("filter applied")   
-#     coef = 2 if n_clicks % 2 == 0 else 1/2
-#     for i, trace in enumerate(fig['data']):
-#         fig['data'][i]['y'] = trace['y'] * coef
-#         fig['layout']['annotations'][i]['y'] = fig['layout']['annotations'][i]['y'] * coef
-#     return fig
-
 
 if __name__ == '__main__':
-    data = get_data(0,0)
-    main_fig = build_main_graph(data)
-    second_fig = build_detailed_rays_graph(data,1)
-    third_fig = build_one_ray_graph(data,1)
-    build_app(main_fig, second_fig, third_fig)
     app.run_server(debug=True)
