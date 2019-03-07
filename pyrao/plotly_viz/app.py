@@ -127,11 +127,10 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
     return fig
 
 def serve_layout():
-    session_id = str(uuid.uuid4())
     data, datetimes = get_data(session_id, datetime_init)
     return html.Div(id='main-div', children=[
-        html.Div(session_id, id='session-id', style={'display': 'none'}),
-        html.Div(0, id='current-ray', style={'display': 'none'}),
+        dcc.Store(id='session-id', data=str(uuid.uuid4()), storage_type='session'),
+        dcc.Store(id='current-ray', data=0, storage_type='session'),
         html.Div(pd.to_datetime(datetime_init).strftime(datetime_format),
                  id='current-dt', style={'display': 'none'}),
         html.Div(
