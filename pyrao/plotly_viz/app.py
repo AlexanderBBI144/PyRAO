@@ -21,6 +21,9 @@ import time
 import uuid
 import json
 
+"""
+СДЕЛАТЬ ВСЕ ГРАФИКИ SUBPLOT'ами
+"""
 
 app = dash.Dash(__name__)
 cache = Cache(app.server, config={
@@ -127,9 +130,10 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
     return fig
 
 def serve_layout():
+    session_id = str(uuid.uuid4())
     data, datetimes = get_data(session_id, datetime_init)
     return html.Div(id='main-div', children=[
-        dcc.Store(id='session-id', data=str(uuid.uuid4()), storage_type='session'),
+        dcc.Store(id='session-id', data=session_id, storage_type='session'),
         dcc.Store(id='current-ray', data=0, storage_type='session'),
         html.Div(pd.to_datetime(datetime_init).strftime(datetime_format),
                  id='current-dt', style={'display': 'none'}),
@@ -242,7 +246,7 @@ def update_datetime(session_id, current_dt, main_div, new_ray):
     return main_div
 """
 @app.callback(Output('current-dt', 'children'),
-              [Input('session-id', 'children'),
+              [Input('session-id', 'data'),
                Input('datetime-picker', 'value')])
 def update_datetime(session_id, value, current_dt):
     get_data(session_id, value, current_dt)
