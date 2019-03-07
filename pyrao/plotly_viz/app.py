@@ -7,369 +7,304 @@ import numpy as np
 from sklearn.preprocessing import scale
 
 import dash
+from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 from plotly import tools
 from plotly.graph_objs import Scatter, Scattergl
 from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 
-# external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-app = dash.Dash(__name__)  # , external_stylesheets=external_stylesheets)
+from flask_caching import Cache
+from flask_socketio import SocketIO, emit
+import os
+import time
+import uuid
+import json
 
-# Читаем данные
-n_samples = 1000
 
-date_str = "2012-07-07"
-def get_date():
-    return dt.strptime(date_str, '%Y-%m-%d')
+app = dash.Dash(__name__)
+cache = Cache(app.server, config={
+    # 'CACHE_TYPE': 'redis',
+    # Note that filesystem cache doesn't work on systems with ephemeral
+    # filesystems like Heroku.
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': './',
 
-time = "05:00"
-data = None
-def get_data():
-    return data
-def update_data(date, time):
-    global data
-    path1 = '070712_05_00.pnt' #date[8:10]+date[5:7]+date[2:4]+'_'+time[0:2]+'_00.pnt'
-    path2 = 'eq_1_6b_20120706_20130403.txt'
-    path3 = './output/'
+    # should be equal to maximum number of users on the app at a single time
+    # higher numbers will store more data in the filesystem / redis cache
+    'CACHE_THRESHOLD': 50
+})
 
-    _data = BSAData()
-    _data.read(path1)
-    _data.calibrate(path2)
-    data = _data
+datetime_format = '%d%m%y_%H_00'
+datetime_min = "2012-07-07T04:00"
+datetime_max = "2012-07-07T04:59"
+datetime_init = "2012-07-07T04:00"
 
-# ---------- Layout
+def get_data(session_id, new_datetime, old_datetime=None):
+    @cache.memoize()
+    def query_data(session_id, new_datetime_str):
+        """Здесь нужно реализовать взаимодействие с БД и доступ к файлу по id времени"""
+        if old_datetime is not None:
+            cache.delete_memoized(session_id, old_datetime)
 
-app.layout = html.Div(children=[
-    html.Div(
-        [
-            html.H3('Фильтры:', style={'marginLeft' : '50px'}),
-            html.Div(dcc.Dropdown(
-                id="filters-dropdown",
-                options=[
-                    {'label': 'New York City', 'value': 'NYC'},
-                    {'label': 'Montreal', 'value': 'MTL'},
-                    {'label': 'San Francisco', 'value': 'SF'}
-                ],
-                value=['MTL', 'NYC'],
-                multi=True
-            ), style={'marginLeft' : '50px', 
-                        'width': "500px"}),
-            html.Br(),
-            html.Label('График интенсивности радиосигнала для телескопа BSA', style={'marginLeft' : '50px'}),
-            dcc.Graph(
-                id='graph-1'
-            )
-        ],
+        path1 = '070712_05_00.pnt' # date[8:10]+date[5:7]+date[2:4]+'_'+time[0:2]+'_00.pnt'
+        path2 = 'eq_1_6b_20120706_20130403.txt'
+
+        data = BSAData()
+        data.read(path1)
+        data.calibrate(path2)
+
+        return data.data, data.dt
+
+    new_datetime = pd.to_datetime(new_datetime)
+    new_datetime_str = new_datetime.strftime(datetime_format)
+    data, datetimes = query_data(session_id, new_datetime_str)
+
+    start_dt = np.datetime64(new_datetime)
+    end_dt = start_dt + np.timedelta64(1, 'h')
+    start_ix = np.where(datetimes>=start_dt)[0][0]
+    end_ix = np.where(datetimes<=end_dt)[0][-1]
+    return data[start_ix:end_ix], datetimes[start_ix:end_ix]
+
+def create_traces(data, datetimes, n_channels, use_gradient):
+    traces = [Scattergl(x=datetimes,
+                      y=data[:, i],
+                      xaxis=f'x{i + 1}',
+                      yaxis=f'y{i + 1}',
+                      line = dict(
+                          color = ('rgb(0, 0, 255)'),
+                          width = 0.7
+                          )
+                      ) for i in range(n_channels)]
+    if use_gradient:
+        for i, trace in enumerate(traces):
+            trace.line['color'] = f'rgb({255*i/n_channels}, 0, {255*(1-i/n_channels)})'
+    return traces
+
+def create_annotations(data, n_channels):
+    return [Annotation(x=-0.06,
+                       y=data[:, i].mean(),
+                       xref='paper',
+                       yref=f'y{i + 1}',
+                       text=f'{i + 1}',
+                       # font=Font(size=9),
+                       showarrow=False)
+                       for i in np.arange(n_channels)]
+
+def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
+    n_channels = data.shape[1]
+    datetimes = [dt.utcfromtimestamp((datetime + np.timedelta64(3, 'h')).tolist()/1e9)
+                 for datetime in datetimes]
+    domains = np.linspace(1, 0, n_channels + 1)
+
+    fig = tools.make_subplots(rows=n_channels, cols=1, # specs=[[{}]] * n_channels,
+                              shared_xaxes=True, shared_yaxes=True,
+                              vertical_spacing=-5, print_grid=False)
+
+    traces = create_traces(data, datetimes, n_channels, use_gradient)
+    for i, trace in enumerate(traces):
+        fig.append_trace(trace, i + 1, 1)
+        fig['layout'].update({f'yaxis{i + 1}': YAxis(
+                                    {
+                                        'domain': np.flip(domains[i:i + 2], axis=0),
+                                        'showticklabels': show_yaxis_ticks,
+                                        'zeroline': False,
+                                        'showgrid': False,
+                                        'automargin': False
+                                    }),
+                            'showlegend': False,
+                            'margin': dict(t = 50)
+                            })
+    if not show_yaxis_ticks:
+        annotations = create_annotations(data, n_channels)
+        fig['layout'].update(annotations=annotations)
+
+    fig['layout'].update(autosize=False, height=height)
+    # fig['layout']['xaxis'].update(side='top')
+    # fig['layout']['xaxis'].update(tickformat='%H:%M:%S:%L')
+    # fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
+
+    return fig
+
+def serve_layout():
+    session_id = str(uuid.uuid4())
+    data, datetimes = get_data(session_id, datetime_init)
+    return html.Div(id='main-div', children=[
+        html.Div(session_id, id='session-id', style={'display': 'none'}),
+        html.Div(0, id='current-ray', style={'display': 'none'}),
+        html.Div(pd.to_datetime(datetime_init).strftime(datetime_format),
+                 id='current-dt', style={'display': 'none'}),
+        html.Div(
+            [
+                html.H3('Фильтры:', style={'marginLeft' : '50px'}),
+                html.Div(
+                    dcc.Dropdown(
+                        id="filters-dropdown",
+                        options=[
+                            {'label': 'Multiply', 'value': 'Multiply'},
+                            {'label': 'Cut', 'value': 'Cut'},
+                        ],
+                        value=[],
+                        multi=True
+                    ), style={'marginLeft' : '50px', 'width': "500px"}
+                ),
+                html.Br(),
+                html.Label('График интенсивности радиосигнала для телескопа BSA',
+                           style={'marginLeft' : '50px'}),
+                dcc.Graph(
+                    id='main-graph',
+                    figure=setup_figure(data[:, :, 0],
+                                        datetimes,
+                                        use_gradient=False,
+                                        show_yaxis_ticks=False,
+                                        height=1000)
+                )
+            ],
+            className="columns",
+            style={'display': 'inline-block',
+                   'vertical-align': 'top',
+                   'width': '50%'}),
+        html.Div(
+            [
+                html.H3('Выберите дату и время: ', style={'marginLeft' : '50px'}),
+                html.Div([
+                    dcc.Input(id='datetime-picker',
+                              type='datetime-local',
+                              style={
+                                  'font-weight': '200',
+                                  'font-size': '18px',
+                                  'line-height': '28px',
+                                  'margin': '0',
+                                  'padding': '8px',
+                                  'background': '#fff',
+                                  'position': 'relative',
+                                  'display': 'inline-block',
+                                  'width': '300px',
+                                  'vertical-align': 'middle'
+                              },
+                              min=datetime_min,
+                              max=datetime_max,
+                              value=datetime_init
+                    ),
+                    html.Br(),
+                    html.Br(),
+                    html.Div(id='datetime-label')
+                ], style={'marginLeft' : '50px'}),
+                html.Br(),
+                dcc.Graph(
+                    id='one-ray-graph',
+                    figure=setup_figure(data[:, 0, 0].reshape(-1, 1),
+                                        datetimes,
+                                        use_gradient=False,
+                                        show_yaxis_ticks=True,
+                                        height=300)
+                ),
+                dcc.Graph(
+                    id='freq-graph',
+                    figure=setup_figure(data[:, 0, 1:],
+                                        datetimes,
+                                        use_gradient=True,
+                                        show_yaxis_ticks=False,
+                                        height=500)
+                ),
+                html.Div(id='placeholder')
+            ],
         className="columns",
         style={'display': 'inline-block',
             'vertical-align': 'top',
-            'width': '50%'}),
+            'width': '50%'})
+    ])
 
-    html.Div(
-        [
-            html.H3('Выберите дату и время: ', style={'marginLeft' : '50px'}),
-            html.Div([
-                dcc.DatePickerSingle(
-                    id='date-picker',
-                    min_date_allowed=get_date(),
-                    initial_visible_month=get_date(),
-                    date=get_date()
-                ),
-                dcc.Input(id='time-picker',
-                            type='time',
-                            style={
-                                'font-weight': '200',
-                                'font-size': '18px',
-                                'line-height': '28px',
-                                'margin': '0',
-                                'padding': '8px',
-                                'background': '#fff',
-                                'position': 'relative',
-                                'display': 'inline-block',
-                                'width': '100px',
-                                'vertical-align': 'middle'
-                            },
-                            value=time
-                ),
-                html.Button('Показать', id='datetime-button', style={
-                                'width': '120px',
-                                'height': '50px',
-                            }),
-                html.Br(),
-                html.Br(),
-                html.Div(id='datetime-label')
-            ], style={'marginLeft' : '50px'}),
-            html.Br(),
-            html.H3('Задайте номер луча: ', style={'marginLeft' : '50px'}),
-            html.Div([
-                dcc.Input(id='ray-number-input',
-                            type='text',
-                            style={
-                                'font-weight': '200',
-                                'font-size': '18px',
-                                'line-height': '32px',
-                                'margin': '0',
-                                'padding': '8px',
-                                'background': '#fff',
-                                'position': 'relative',
-                                'display': 'inline-block',
-                                'width': '100px',
-                                'vertical-align': 'middle'
-                            },
-                            value=1
-                ),
-                html.Button('Показать', id='ray-button', style={
-                                'width': '120px',
-                                'height': '50px',
-                            })
-            ], style={'marginLeft' : '50px'}),
-            dcc.Graph(
-                id='graph-2'
-            ),
-            dcc.Graph(
-                id='graph-3'
-            ),
-            html.Div(id='placeholder')
-        ],
-    className="columns",
-    style={'display': 'inline-block',
-        'vertical-align': 'top',
-        'width': '50%'})
-])
-    
-# ---------- Callbacks
+app.layout = serve_layout
+"""
+@app.callback(Output('main-div', 'children'),
+              [Input('session-id', 'children'),
+               Input('current-dt', 'children'),
+               Input('main-div', 'children'),
+               Input('current-ray', 'children')])
+def update_datetime(session_id, current_dt, main_div, new_ray):
+    data, datetimes = get_data(session_id, current_dt)
+    main_div[-2]['children'][-1]['figure'] = setup_figure(data[:, :, 0],
+                                                          datetimes,
+                                                          use_gradient=False,
+                                                          show_yaxis_ticks=False,
+                                                          height=1000)
+    main_div[-1]['children'][-3]['figure'] = setup_figure(data[:, new_ray, 0],
+                                                          datetimes,
+                                                          use_gradient=False,
+                                                          show_yaxis_ticks=True,
+                                                          height=300)
+    main_div[-1]['children'][-2]['figure'] = setup_figure(data[:, new_ray, 1:],
+                                                          datetimes,
+                                                          use_gradient=True,
+                                                          show_yaxis_ticks=False,
+                                                          height=500)
+    print(main_div)
+    return main_div
+"""
+@app.callback(Output('current-dt', 'children'),
+              [Input('session-id', 'children'),
+               Input('datetime-picker', 'value')])
+def update_datetime(session_id, value, current_dt):
+    get_data(session_id, value, current_dt)
+    print(current_dt)
+    return None#current_dt#pd.to_datetime(value).strftime(datetime_format)
 
-# 1. updating datetime label
+"""@app.callback(Output('main-graph', 'figure'),
+              [Input('session-id', 'children'),
+               Input('datetime-picker', 'value')])
+def update_main_graph(session_id, value):
+    data, datetimes = get_data(session_id, value)
+    data = data[:, :, 0]
+    return setup_figure(data,
+                        datetimes,
+                        use_gradient=False,
+                        show_yaxis_ticks=False,
+                        height=1000)
 
-@app.callback(
-    dash.dependencies.Output('datetime-label', 'children'),
-    [dash.dependencies.Input('datetime-button', 'n_clicks')],
-    [dash.dependencies.State('date-picker', 'date'), dash.dependencies.State('time-picker', 'value')])
-def update_datetime_label(n_clicks, date, value):
-    if date is not None and value is not None :
-        string_prefix = 'Данные показаны для: '
-        string = string_prefix + date + " " + value
-        date = date
-        time = value
-        print(string)
-        return string
+@app.callback(Output('one-ray-graph', 'figure'),
+              [Input('session-id', 'children'),
+               Input('datetime-picker', 'value'),
+               Input('current-ray', 'children')])
+def update_one_ray_graph(session_id, value, new_ray):
+    data, datetimes = get_data(session_id, value)
+    data = data[:, new_ray, 0].reshape(-1, 1)
+    fig = setup_figure(data,
+                       datetimes,
+                       use_gradient=False,
+                       show_yaxis_ticks=True,
+                       height=300)
+    return fig
 
-# 2. reading data from date time and updating 1st graph
+@app.callback(Output('freq-graph', 'figure'),
+              [Input('session-id', 'children'),
+               Input('datetime-picker', 'value'),
+               Input('current-ray', 'children')])
+def update_freq_graph(session_id, value, new_ray):
+    data, datetimes = get_data(session_id, value)
+    data = data[:, new_ray, 1:]
+    fig = setup_figure(data,
+                       datetimes,
+                       use_gradient=True,
+                       show_yaxis_ticks=False,
+                       height=500)
+    return fig"""
+#
+# @app.callback(Output('current-ray', 'children'),
+#               [Input('main-graph', 'clickData')])
+# def update_ray(clickData):
+#     return clickData['points'][0]['curveNumber'] if clickData is not None else 0
 
-@app.callback(
-    dash.dependencies.Output('graph-1', 'figure'),
-    [dash.dependencies.Input('datetime-button', 'n_clicks')],
-    [dash.dependencies.State('date-picker', 'date'), dash.dependencies.State('time-picker', 'value')])
-def update_graph1(n_clicks, date, value):
-    if date is not None and value is not None :
-        # string_prefix = 'Данные показаны для: '
-        # string = string_prefix + date + " " + value
-        _date = get_date()
-        update_data(_date, time)
-        _data = get_data()
-        fig = setup_main_praph(_data)
-        return fig
-
-
-# 3. updating 2nd graph
-
-@app.callback(
-    dash.dependencies.Output('graph-2', 'figure'),
-    [dash.dependencies.Input('ray-button', 'n_clicks')],
-    [dash.dependencies.State('ray-number-input', 'value')])
-def update_graph2(n_clicks, value):
-    if value is not None:
-        print(f"Ray number changed to: {value}")
-        _data = get_data()
-        fig = setup_one_ray_graph(_data, int(value))
-        return fig
-
-# 4. updating 3nd graph
-
-@app.callback(
-    dash.dependencies.Output('graph-3', 'figure'),
-    [dash.dependencies.Input('ray-button', 'n_clicks')],
-    [dash.dependencies.State('ray-number-input', 'value')])
-def update_graph3(n_clicks, value):
-    if value is not None:
-        print(f"Ray number changed to: {value}")
-        _data = get_data()
-        fig = setup_detailed_ray_graph(_data, int(value))
-        return fig
-
+# Callbacks for synchronous updating xaxis on all graphs
+# @app.callback(Output('main-graph', 'figure'),
+#               [Input('main_graph', 'relayoutData')])
+# def
 
 @app.callback(
     dash.dependencies.Output('placeholder', 'children'),
     [dash.dependencies.Input('filters-dropdown', 'value')])
 def update_output(value):
     print(value)
-
-
-
-# ---------- Functions
-
-def setup_main_praph(_data):
-    n_channels = 48
-    # Для начала можно вывести порядка 1000 точек в каждом луче
-    data_trunc = _data.data[:n_samples,:n_channels, 0]  # Обрезанные данные
-    # data_trunc[500:510, 5] = 2000
-    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
-
-    ch_names = (np.arange(n_channels) + 1).astype(str)  # Названия лучей
-    # Сетка расположения лучей на графике
-    domains = np.linspace(1, 0, n_channels + 1)
-
-    # Список графиков лучей
-    traces = [Scattergl(x=times,
-                        y=data_trunc[:, i],
-                        xaxis=f'x{i + 1}',
-                        yaxis=f'y{i + 1}',
-                        line = dict(
-                            color = ('rgb(0, 0, 255)'),
-                            width = 0.7
-                            )
-                        ) for i in range(0, n_channels)]
-
-    # Список номеров лучей
-    annotations = [Annotation(x=-0.06,
-                            y=data_trunc[:, i].mean(),
-                            xref='paper',
-                            yref=f'y{i + 1}',
-                            text=ch_name,
-                            # font=Font(size=9),
-                            showarrow=False)
-                            for i, ch_name in enumerate(ch_names)]
-
-    # Создание графика
-
-    fig = tools.make_subplots(rows=n_channels, cols=1, specs=[[{}]] * n_channels,
-                            shared_xaxes=True, shared_yaxes=True,
-                            vertical_spacing=-5, print_grid=False)
-
-    for i, trace in enumerate(traces):
-        fig.append_trace(trace, i + 1, 1)
-        fig['layout'].update({f'yaxis{i + 1}': YAxis(
-                                    {
-                                        'domain': np.flip(domains[i:i + 2], axis=0),
-                                        'showticklabels': False,
-                                        'zeroline': False,
-                                        'showgrid': False,
-                                        'automargin': False
-                                    }),
-                            'showlegend': False,
-                            'margin': dict(t = 50)
-                            })
-
-    fig['layout'].update(autosize=False, height=1000)
-    fig['layout']['xaxis'].update(side='top')
-    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-    fig['layout'].update(annotations=annotations)
-    return fig
-
-
-def setup_one_ray_graph(_data, ray_number=1):
-    ray_number = ray_number - 1
-    data_trunc = _data.data[:n_samples, ray_number, 0]  # Обрезанные данные
-    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
-
-    # Сетка расположения лучей на графике
-    domain = [1, 0]
-
-    # Список графиков лучей
-    trace = Scattergl(x=times,
-                        y=data_trunc,
-                        xaxis=f'x1',
-                        yaxis=f'y1',
-                        line = dict(
-                            color = ('rgb(0, 0, 255)'),
-                            width = 0.7
-                            )
-                        )
-
-    # Создание графика
-
-    fig = tools.make_subplots(rows=1, cols=1, specs=[[{}]],
-                            shared_xaxes=True, shared_yaxes=True,
-                            vertical_spacing=-5, print_grid=False)
-
-    
-    fig.append_trace(trace, 1, 1)
-    fig['layout'].update({f'yaxis1': YAxis(
-                                {
-                                    'domain': np.flip(domain, axis=0),
-                                    'showticklabels': True,
-                                    'zeroline': False,
-                                    'showgrid': False,
-                                    'automargin': False
-                                }),
-                        'showlegend': False,
-                        'margin': dict(t = 50)
-                        })
-
-    fig['layout'].update(autosize=False, height=300)
-    fig['layout']['xaxis'].update(side='top')
-    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-    return fig    
-
-
-def setup_detailed_ray_graph(_data, ray_number=1):
-    ray_number = ray_number - 1
-    n_channels = 7
-    # Для начала можно вывести порядка 1000 точек в каждом луче
-    data_trunc = _data.data[:n_samples, ray_number, :]  # Обрезанные данные
-    times = pd.Series(_data.dt[:n_samples])  # Список datetime наблюдений
-
-    ch_names = (np.arange(n_channels) + 1).astype(str)  # Названия лучей
-    # Сетка расположения лучей на графике
-    domains = np.linspace(1, 0, n_channels + 1)
-
-    # Список графиков лучей
-    traces = [Scattergl(x=times,
-                        y=data_trunc[:, i],
-                        xaxis=f'x{i + 1}',
-                        yaxis=f'y{i + 1}',
-                        line = dict(
-                            color = (f'rgb({255*i/n_channels}, 0, {255*(1-i/n_channels)})'),
-                            width = 0.7
-                            )
-                        ) for i in range(0, n_channels)]
-
-    # Список номеров лучей
-    annotations = [Annotation(x=-0.06,
-                            y=data_trunc[:, i].mean(),
-                            xref='paper',
-                            yref=f'y{i + 1}',
-                            text=ch_name,
-                            # font=Font(size=9),
-                            showarrow=False)
-                            for i, ch_name in enumerate(ch_names)]
-
-    # Создание графика
-
-    fig = tools.make_subplots(rows=n_channels, cols=1, specs=[[{}]] * n_channels,
-                            shared_xaxes=True, shared_yaxes=True,
-                            vertical_spacing=-5, print_grid=False)
-
-    for i, trace in enumerate(traces):
-        fig.append_trace(trace, i + 1, 1)
-        fig['layout'].update({f'yaxis{i + 1}': YAxis(
-                                    {
-                                        'domain': np.flip(domains[i:i + 2], axis=0),
-                                        'showticklabels': False,
-                                        'zeroline': False,
-                                        'showgrid': False,
-                                        'automargin': False
-                                    }),
-                            'showlegend': False,
-                            'margin': dict(t = 50)
-                            })
-
-    fig['layout'].update(autosize=False, height=500)
-    fig['layout']['xaxis'].update(side='top')
-    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-    fig['layout'].update(annotations=annotations)
-    return fig
 
 
 if __name__ == '__main__':
