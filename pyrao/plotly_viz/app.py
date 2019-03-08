@@ -133,9 +133,28 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
 
     return fig
 
+def get_figures(data, datetimes, ray):
+    fig1 = setup_figure(data[:, :, 0],
+                      datetimes,
+                      use_gradient=False,
+                      show_yaxis_ticks=False,
+                      height=1000)
+    fig2 = setup_figure(data[:, ray, 0].reshape(-1, 1),
+                      datetimes,
+                      use_gradient=False,
+                      show_yaxis_ticks=True,
+                      height=300)
+    fig3 = setup_figure(data[:, ray, 1:],
+                      datetimes,
+                      use_gradient=True,
+                      show_yaxis_ticks=False,
+                      height=500)
+    return fig1, fig2, fig3
+
 def serve_layout():
     session_id = str(uuid.uuid4())
-    #data, datetimes = get_data(session_id, datetime_init)
+    data, datetimes = get_data(session_id, [datetime_init, datetime_init])
+    fig1, fig2, fig3 = get_figures(data, datetimes, 0)
     return html.Div(id='main-div', children=[
         dcc.Store(id='session-id', storage_type='session'),
         dcc.Store(id='current-ray', storage_type='session'),
@@ -159,11 +178,7 @@ def serve_layout():
                            style={'marginLeft' : '50px'}),
                 dcc.Graph(
                     id='main-graph',
-                    #figure=setup_figure(data[:, :, 0],
-                    #                    datetimes,
-                    #                    use_gradient=False,
-                    #                    show_yaxis_ticks=False,
-                    #                    height=1000)
+                    figure=fig1
                 )
             ],
             className="columns",
@@ -199,19 +214,11 @@ def serve_layout():
                 html.Br(),
                 dcc.Graph(
                     id='one-ray-graph',
-                    #figure=setup_figure(data[:, 0, 0].reshape(-1, 1),
-                    #                    datetimes,
-                    #                    use_gradient=False,
-                    #                    show_yaxis_ticks=True,
-                    #                    height=300)
+                    figure=fig2
                 ),
                 dcc.Graph(
                     id='freq-graph',
-                    #figure=setup_figure(data[:, 0, 1:],
-                    #                    datetimes,
-                    #                    use_gradient=True,
-                    #                    show_yaxis_ticks=False,
-                    #                    height=500)
+                    figure=fig3
                 ),
                 html.Div(id='placeholder')
             ],
@@ -226,50 +233,35 @@ app.layout = serve_layout
 @app.callback([Output('main-graph', 'figure'),
                Output('one-ray-graph', 'figure'),
                Output('freq-graph', 'figure')],
-              [Input('datetime', 'data')],
+              [Input('datetime', 'data'),
+               Input('current-ray', 'data'),
+               Input('main-graph', 'relayoutData')],
               [State('session-id', 'data'),
-               State('current-ray', 'data')])
-def update_graphs(date, session_id, ray):
-    print('upd graphs', date, session_id, ray)
-    ray = ray if ray is not None else 0
+               State('datetime', 'data'),
+               State('current-ray', 'data'),
+               State('main-graph', 'figure'),
+              State('one-ray-graph', 'figure'),
+              State('freq-graph', 'figure')])
+def update_graphs(date, ray, relayoutData, session_id, old_date, old_ray, f1, f2, f3):
+    date = date if date is not None else old_date
     date = date if date is not None else [datetime_init, datetime_init]
+    ray = ray if ray is not None else old_ray
+    ray = ray if ray is not None else 0
+
+    print('upd graphs', date, session_id, ray)
+    print(relayoutData)
+    if f1 is not None and f2 is not None and f3 is not None and relayoutData is not None:
+        f1['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+        f1['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+        f2['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+        f2['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+        f3['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+        f3['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+        return f1, f2, f3
 
     data, datetimes = get_data(session_id, date)
-    fig1 = setup_figure(data[:, :, 0],
-                      datetimes,
-                      use_gradient=False,
-                      show_yaxis_ticks=False,
-                      height=1000)
-    fig2 = setup_figure(data[:, ray, 0].reshape(-1, 1),
-                      datetimes,
-                      use_gradient=False,
-                      show_yaxis_ticks=True,
-                      height=300)
-    fig3 = setup_figure(data[:, ray, 1:],
-                      datetimes,
-                      use_gradient=True,
-                      show_yaxis_ticks=False,
-                      height=500)
-    return fig1, fig2, fig3
 
-    """main_div[-2]['children'][-1]['figure'] = setup_figure(data[:, :, 0],
-                                                          datetimes,
-                                                          use_gradient=False,
-                                                          show_yaxis_ticks=False,
-                                                          height=1000)
-    main_div[-1]['children'][-3]['figure'] = setup_figure(data[:, new_ray, 0],
-                                                          datetimes,
-                                                          use_gradient=False,
-                                                          show_yaxis_ticks=True,
-                                                          height=300)
-    main_div[-1]['children'][-2]['figure'] = setup_figure(data[:, new_ray, 1:],
-                                                          datetimes,
-                                                          use_gradient=True,
-                                                          show_yaxis_ticks=False,
-                                                          height=500)"""
-    #print(main_div)
-    return 1#main_div
-
+    return get_figures(data, datetimes, ray)
 
 @app.callback(Output('session-id', 'data'),
               [Input('session-id', 'modified_timestamp')],
@@ -282,10 +274,9 @@ def update_session_id(modified_timestamp, data):
 
 @app.callback(Output('current-ray', 'data'),
               [Input('main-graph', 'clickData')],
-              [State('session-id', 'data'),
-               State('current-ray', 'data')])
-def update_ray(clickData, session_id, data):
-    print('ray', clickData['points'][0]['curveNumber'] if clickData is not None else None, data, session_id)
+              [State('session-id', 'data')])
+def update_ray(clickData, session_id):
+    print('ray', clickData['points'][0]['curveNumber'] if clickData is not None else None, session_id)
     return clickData['points'][0]['curveNumber'] if clickData is not None else 0
 
 @app.callback(Output('datetime', 'data'),
@@ -343,8 +334,7 @@ def update_freq_graph(session_id, value, new_ray):
     return fig"""
 
 # Callbacks for synchronous updating xaxis on all graphs
-# @app.callback(Output('main-graph', 'figure'),
-#               [Input('main_graph', 'relayoutData')])
+
 # def
 
 
