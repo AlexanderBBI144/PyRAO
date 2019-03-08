@@ -11,7 +11,7 @@ from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 from plotly import tools
-from plotly.graph_objs import Scatter, Scattergl
+from plotly.graph_objs import Scatter, Scattergl, Figure
 from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 
 from flask_caching import Cache
@@ -23,6 +23,7 @@ import json
 
 """
 СДЕЛАТЬ ВСЕ ГРАФИКИ SUBPLOT'ами
+УДАЛЯТЬ КАЛИБРАЦИОННЫЕ ПЕРИОДЫ
 """
 
 app = dash.Dash(__name__)
@@ -43,12 +44,15 @@ datetime_min = "2012-07-07T04:00"
 datetime_max = "2012-07-07T04:59"
 datetime_init = "2012-07-07T04:00"
 
-def get_data(session_id, new_datetime, old_datetime=None):
+def get_data(session_id, date):
+    old_date = date[0]
+    new_date = date[1]
     @cache.memoize()
-    def query_data(session_id, new_datetime_str):
+    def query_data(session_id, new_date):
         """Здесь нужно реализовать взаимодействие с БД и доступ к файлу по id времени"""
-        if old_datetime is not None:
-            cache.delete_memoized(session_id, old_datetime)
+        if old_date is not None and old_date != new_date:
+            print('Deleting cache:', session_id, old_date)
+            cache.delete_memoized(query_data, session_id, old_date)
 
         path1 = '070712_05_00.pnt' # date[8:10]+date[5:7]+date[2:4]+'_'+time[0:2]+'_00.pnt'
         path2 = 'eq_1_6b_20120706_20130403.txt'
@@ -59,14 +63,14 @@ def get_data(session_id, new_datetime, old_datetime=None):
 
         return data.data, data.dt
 
-    new_datetime = pd.to_datetime(new_datetime)
-    new_datetime_str = new_datetime.strftime(datetime_format)
-    data, datetimes = query_data(session_id, new_datetime_str)
+    data, datetimes = query_data(session_id, new_date)
 
+    new_datetime = pd.to_datetime(new_date)
     start_dt = np.datetime64(new_datetime)
     end_dt = start_dt + np.timedelta64(1, 'h')
     start_ix = np.where(datetimes>=start_dt)[0][0]
     end_ix = np.where(datetimes<=end_dt)[0][-1]
+
     return data[start_ix:end_ix], datetimes[start_ix:end_ix]
 
 def create_traces(data, datetimes, n_channels, use_gradient):
@@ -131,12 +135,11 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
 
 def serve_layout():
     session_id = str(uuid.uuid4())
-    data, datetimes = get_data(session_id, datetime_init)
+    #data, datetimes = get_data(session_id, datetime_init)
     return html.Div(id='main-div', children=[
-        dcc.Store(id='session-id', data=session_id, storage_type='session'),
-        dcc.Store(id='current-ray', data=0, storage_type='session'),
-        html.Div(pd.to_datetime(datetime_init).strftime(datetime_format),
-                 id='current-dt', style={'display': 'none'}),
+        dcc.Store(id='session-id', storage_type='session'),
+        dcc.Store(id='current-ray', storage_type='session'),
+        dcc.Store(id='datetime', storage_type='session'),
         html.Div(
             [
                 html.H3('Фильтры:', style={'marginLeft' : '50px'}),
@@ -156,11 +159,11 @@ def serve_layout():
                            style={'marginLeft' : '50px'}),
                 dcc.Graph(
                     id='main-graph',
-                    figure=setup_figure(data[:, :, 0],
-                                        datetimes,
-                                        use_gradient=False,
-                                        show_yaxis_ticks=False,
-                                        height=1000)
+                    #figure=setup_figure(data[:, :, 0],
+                    #                    datetimes,
+                    #                    use_gradient=False,
+                    #                    show_yaxis_ticks=False,
+                    #                    height=1000)
                 )
             ],
             className="columns",
@@ -196,19 +199,19 @@ def serve_layout():
                 html.Br(),
                 dcc.Graph(
                     id='one-ray-graph',
-                    figure=setup_figure(data[:, 0, 0].reshape(-1, 1),
-                                        datetimes,
-                                        use_gradient=False,
-                                        show_yaxis_ticks=True,
-                                        height=300)
+                    #figure=setup_figure(data[:, 0, 0].reshape(-1, 1),
+                    #                    datetimes,
+                    #                    use_gradient=False,
+                    #                    show_yaxis_ticks=True,
+                    #                    height=300)
                 ),
                 dcc.Graph(
                     id='freq-graph',
-                    figure=setup_figure(data[:, 0, 1:],
-                                        datetimes,
-                                        use_gradient=True,
-                                        show_yaxis_ticks=False,
-                                        height=500)
+                    #figure=setup_figure(data[:, 0, 1:],
+                    #                    datetimes,
+                    #                    use_gradient=True,
+                    #                    show_yaxis_ticks=False,
+                    #                    height=500)
                 ),
                 html.Div(id='placeholder')
             ],
@@ -219,15 +222,37 @@ def serve_layout():
     ])
 
 app.layout = serve_layout
-"""
-@app.callback(Output('main-div', 'children'),
-              [Input('session-id', 'children'),
-               Input('current-dt', 'children'),
-               Input('main-div', 'children'),
-               Input('current-ray', 'children')])
-def update_datetime(session_id, current_dt, main_div, new_ray):
-    data, datetimes = get_data(session_id, current_dt)
-    main_div[-2]['children'][-1]['figure'] = setup_figure(data[:, :, 0],
+
+@app.callback([Output('main-graph', 'figure'),
+               Output('one-ray-graph', 'figure'),
+               Output('freq-graph', 'figure')],
+              [Input('datetime', 'data')],
+              [State('session-id', 'data'),
+               State('current-ray', 'data')])
+def update_graphs(date, session_id, ray):
+    print('upd graphs', date, session_id, ray)
+    ray = ray if ray is not None else 0
+    date = date if date is not None else [datetime_init, datetime_init]
+
+    data, datetimes = get_data(session_id, date)
+    fig1 = setup_figure(data[:, :, 0],
+                      datetimes,
+                      use_gradient=False,
+                      show_yaxis_ticks=False,
+                      height=1000)
+    fig2 = setup_figure(data[:, ray, 0].reshape(-1, 1),
+                      datetimes,
+                      use_gradient=False,
+                      show_yaxis_ticks=True,
+                      height=300)
+    fig3 = setup_figure(data[:, ray, 1:],
+                      datetimes,
+                      use_gradient=True,
+                      show_yaxis_ticks=False,
+                      height=500)
+    return fig1, fig2, fig3
+
+    """main_div[-2]['children'][-1]['figure'] = setup_figure(data[:, :, 0],
                                                           datetimes,
                                                           use_gradient=False,
                                                           show_yaxis_ticks=False,
@@ -241,17 +266,41 @@ def update_datetime(session_id, current_dt, main_div, new_ray):
                                                           datetimes,
                                                           use_gradient=True,
                                                           show_yaxis_ticks=False,
-                                                          height=500)
-    print(main_div)
-    return main_div
-"""
-@app.callback(Output('current-dt', 'children'),
-              [Input('session-id', 'data'),
-               Input('datetime-picker', 'value')])
-def update_datetime(session_id, value, current_dt):
-    get_data(session_id, value, current_dt)
-    print(current_dt)
-    return None#current_dt#pd.to_datetime(value).strftime(datetime_format)
+                                                          height=500)"""
+    #print(main_div)
+    return 1#main_div
+
+
+@app.callback(Output('session-id', 'data'),
+              [Input('session-id', 'modified_timestamp')],
+              [State('session-id', 'data')])
+def update_session_id(modified_timestamp, data):
+    print('sess id', modified_timestamp, data)
+    if modified_timestamp is None:
+        return data if data is not None else str(uuid.uuid4())
+    return data if data is not None else str(uuid.uuid4())
+
+@app.callback(Output('current-ray', 'data'),
+              [Input('main-graph', 'clickData')],
+              [State('session-id', 'data'),
+               State('current-ray', 'data')])
+def update_ray(clickData, session_id, data):
+    print('ray', clickData['points'][0]['curveNumber'] if clickData is not None else None, data, session_id)
+    return clickData['points'][0]['curveNumber'] if clickData is not None else 0
+
+@app.callback(Output('datetime', 'data'),
+              [Input('datetime-picker', 'value')],
+              [State('session-id', 'data'),
+               State('datetime', 'data')])
+def update_datetime(value, session_id, data):
+    print('dt', value, data, session_id)
+    return (data[1], value) if data is not None else (value, value)
+
+@app.callback(
+    Output('placeholder', 'children'),
+    [Input('filters-dropdown', 'value')])
+def update_output(value):
+    print(value)
 
 """@app.callback(Output('main-graph', 'figure'),
               [Input('session-id', 'children'),
@@ -292,22 +341,11 @@ def update_freq_graph(session_id, value, new_ray):
                        show_yaxis_ticks=False,
                        height=500)
     return fig"""
-#
-# @app.callback(Output('current-ray', 'children'),
-#               [Input('main-graph', 'clickData')])
-# def update_ray(clickData):
-#     return clickData['points'][0]['curveNumber'] if clickData is not None else 0
 
 # Callbacks for synchronous updating xaxis on all graphs
 # @app.callback(Output('main-graph', 'figure'),
 #               [Input('main_graph', 'relayoutData')])
 # def
-
-@app.callback(
-    dash.dependencies.Output('placeholder', 'children'),
-    [dash.dependencies.Input('filters-dropdown', 'value')])
-def update_output(value):
-    print(value)
 
 
 if __name__ == '__main__':
