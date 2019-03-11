@@ -42,7 +42,7 @@ configuration = dict(
     url='https://github.com/AlexanderBBI144/PyRAO/',
     packages=find_packages(),
     install_requires=['numpy', 'pandas', 'matplotlib', 'angles', 'astropy',
-                      'scipy'],
+                      'scipy', 'dash', 'plotly', 'flask_caching'],
     zip_safe=False,
     cmdclass={
         'install': InstallCommand,
