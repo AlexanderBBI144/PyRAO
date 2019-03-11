@@ -4,7 +4,6 @@ from pyrao import BSAData
 
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import scale
 
 import dash
 from dash.dependencies import Input, Output, State
@@ -15,7 +14,6 @@ from plotly.graph_objs import Scatter, Scattergl, Figure
 from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 
 from flask_caching import Cache
-from flask_socketio import SocketIO, emit
 import os
 import time
 import uuid

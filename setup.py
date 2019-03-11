@@ -33,7 +33,7 @@ class InstallCommand(install):
 
 configuration = dict(
     name='pyrao',
-    version='1.0',
+    version='1.01',
     description='Toolkit designed to integrate BSA structures '\
                 'with the most recent world astronomic practices.',
     license="GNUv3",
