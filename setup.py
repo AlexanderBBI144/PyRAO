@@ -33,7 +33,7 @@ class InstallCommand(install):
 
 configuration = dict(
     name='pyrao',
-    version='1.01',
+    version='1.1',
     description='Toolkit designed to integrate BSA structures '\
                 'with the most recent world astronomic practices.',
     license="GNUv3",
@@ -42,7 +42,7 @@ configuration = dict(
     url='https://github.com/AlexanderBBI144/PyRAO/',
     packages=find_packages(),
     install_requires=['numpy', 'pandas', 'matplotlib', 'angles', 'astropy',
-                      'scipy', 'dash', 'plotly', 'flask_caching'],
+                      'scipy', 'plotly', 'dash', 'flask_caching'],
     zip_safe=False,
     cmdclass={
         'install': InstallCommand,
