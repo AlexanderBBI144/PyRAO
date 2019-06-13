@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from angles import AlphaAngle, DeltaAngle, fmt_angle
 from astropy.time import Time
+from datetime import datetime
 from dateutil.parser import parse
 
 from .cinterp1d import cinterp1d
@@ -41,6 +42,8 @@ class BSAData():
     data : numpy.ndarray
         Array of shape (`nsamples`, `nbeams`, `nbands`)
         with BSA observations.
+    paths: array_like
+        Array of paths to data and calibration files.
     nbeams : int
         Number of beams (rays) of BSA telescope.
     nbands : int
@@ -70,7 +73,7 @@ class BSAData():
 
     Methods
     -------
-    read(path_to_data=None, start=0, stop=None)
+    read(PATH_DATA=None, start=0, stop=None)
         Read observations from the specified source.
     calibrate(path_to_calb=None)
         Calibrate observations using calibration info
@@ -82,6 +85,11 @@ class BSAData():
         to widely used .fil file format.
 
     """
+    PATH_DATA = './'
+    PATH_CALB = './'
+    PATH_OUTPUT = './'
+    DATA_EXT = '.pnt'
+    CALB_EXT = '.txt'
 
     def __init__(self, nbeams=48, az=0.0, verbose=False):
         """Initialize variables."""
@@ -92,11 +100,6 @@ class BSAData():
         self.verbose = verbose
         self.is_read = False
         self.is_calibrated = False
-
-    def _lin_dt(self, start, stop, num):
-        return np.array(pd.to_datetime(np.linspace(pd.Timestamp(start).value,
-                                                   pd.Timestamp(stop).value,
-                                                   num)))
 
     def _correct_confused_beams(self):
         """
@@ -144,9 +147,9 @@ class BSAData():
     def _read_db(self, limits=None):
         raise NotImplementedError
 
-    def _read_pnt(self, path_to_data, limits=None):
+    def _read_pnt(self, path, limits=None):
         """Parse header and read observations from .pnt or .pnthr files."""
-        with open(self.path_to_data, 'rb') as f:
+        with open(path, 'rb') as f:
             # Read header
             logger.info('Reading header')
             n = int(f.readline().decode('utf-8').split()[1])
@@ -163,16 +166,14 @@ class BSAData():
                                        header['time_begin'][0])))
             dt_stop = parse(' '.join((header['date_end'][0],
                                       header['time_end'][0])))
-            self.dt = self._lin_dt(dt_start,
-                                   dt_stop,
-                                   npoints_tot)[start:stop]
+            self.dt = pd.date_range(dt_start, dt_stop, npoints_tot) \
+                        .values[start:stop]
             self.mjd = np.linspace(Time(dt_start).mjd,
                                    Time(dt_stop).mjd,
                                    npoints_tot)[start:stop]
             self.nsamples = stop - start
             self.resolution = float(header['tresolution'][0])/1000
-            self.stand = 1 if 'N1' in (self.path_to_data.split('/')[-1]
-                                                        .split('_')) else 2
+            self.stand = 1 if 'N1' in (path.split('/')[-1].split('_')) else 2
             self.nbands = int(header['nbands'][0]) + 1  # n bands + sum
             self.fbands = np.array(list(map(float, header['fbands'])))
             self.wbands = np.array(list(map(float, header['wbands'])))
@@ -191,11 +192,11 @@ class BSAData():
 
             logger.info(f'Data is read: {str(self.data.shape)}')
 
-    def _read_csv(self, path_to_data, limits=None):
+    def _read_csv(self, path, limits=None):
         raise NotImplementedError
 
         # Load data csv
-        df = pd.read_csv(self.path_to_data, index_col='datas_id')
+        df = pd.read_csv(path, index_col='datas_id')
         # Sort and drop NA values
         df = df[df['usability'] > 0].sort_values(['time']).dropna(axis=1)
         # Get df_eqv channels' names and transform
@@ -204,15 +205,12 @@ class BSAData():
         df[df_cnls] = df[df_cnls].applymap(lambda x: x[1:-1].split(','))
 
         self.nbands = df[df_cnls].values.shape
-        # self.mjd = np.linspace(Time(dt_start).mjd,
-        #                       Time(dt_stop).mjd,
-        #                       npoints_tot)
 
-    def _read_fil(self, path_to_data, limits=None):
+    def _read_fil(self, path, limits=None):
         raise NotImplementedError
         """
         # Read 1 byte of 4-bit unsigned integers
-        with open(path_to_data, 'rb') as f:
+        with open(path, 'rb') as f:
             print(f.read(365))
             for i in range(5):
                 a = f.read(1)
@@ -220,32 +218,28 @@ class BSAData():
                 print((a[0] & bytes([240])[0]) >> 4)
         """
 
-    def read(self, path_to_data, limits=None):
+    def read(self, date, limits=None):
         """
         Read data from .pnt, .pnthr, .csv files or from BSADatabase.
 
         Parameters
         ----------
-        path_to_data : str or '.db'
-            May be one of the forllowing formats: .pnt, .pnthr, .csv.
-            If equals '.db', reads from BSA database
         limits : array_like
             Tuple of 2 indices: index to start and index to stop while reading.
 
         """
         logger.info("Reading data")
 
-        if path_to_data is None:
-            raise ValueError('path_to_data has to be specified.')
-        self.path_to_data = path_to_data
+        ext = self.DATA_EXT if self.DATA_EXT is not None else ''
+        self.filename = date.strftime("%y%m%d_%H_00") + ext
+        path = self.PATH_DATA + self.filename
 
-        extension = self.path_to_data.split('.')[-1]
-        if extension == 'pnt' or extension == 'pnthr':
-            self._read_pnt(self.path_to_data, limits)
-        elif extension == 'csv':
-            self._read_csv(self.path_to_data, limits)
-        elif extension == 'db':
-            self._read_db(limits)
+        if ext == '.pnt' or ext == '.pnthr':
+            self._read_pnt(path, limits)
+        elif ext == '.csv':
+            self._read_csv(path, limits)
+        elif ext == '':
+            self._read_db(date, limits)
 
         if self.stand == 1:
             self._correct_confused_beams()
@@ -265,20 +259,16 @@ class BSAData():
     def _load_calb_db(self):
         raise NotImplementedError
 
-    def _load_calb_txt(self):
+    def _load_calb_txt(self, path):
         # ВОЗМОЖНО ТОЖЕ ПОМЕНЯТЬ ЛУЧИ
         logger.info("Reading calibration file")
 
-        with open(self.path_to_calb) as f:
+        with open(path) as f:
             d = [[y.strip() for y in x.split('|')] for x in f.readlines()]
 
         self.calb_range_mjd = np.unique([float(x[1]) for x in d])
 
-        if max(self.mjd) < min(self.calb_range_mjd) or \
-           min(self.mjd) > max(self.calb_range_mjd):
-            raise ValueError("You are using a wrong calibration file. \
-                              Please check the dates.")
-        elif min(self.mjd) < min(self.calb_range_mjd):
+        if min(self.mjd) < min(self.calb_range_mjd):
             raise ValueError("First date of data preceeds \
                               first date of calibration file.")
         elif max(self.mjd) > max(self.calb_range_mjd):
@@ -301,11 +291,10 @@ class BSAData():
                                                                np.newaxis]
         self.coef = (t_gsh - t_eq) / (big_signal - small_signal)
 
-    def _load_calb_csv(self):
-        # calb = pd.read_csv(self.path_to_calb)
+    def _load_calb_csv(self, path):
         raise NotImplementedError
 
-    def calibrate(self, path_to_calb):
+    def calibrate(self):
         """
         Calibrate data.
 
@@ -320,21 +309,21 @@ class BSAData():
         """
         # Check if data is processed
         if not self.is_read:
-            raise ValueError("You have to process data first")
+            raise ValueError("You have to read data first")
 
         # Interpolate calibration series and apply them to data
         logger.info("Calibrating data")
 
-        if path_to_calb is None:
-            raise ValueError('path_to_calb has to be specified.')
-        self.path_to_calb = path_to_calb
+        ext = self.CALB_EXT if self.CALB_EXT is not None else ''
+        # self.filename_calb = date.strftime("%y%m%d_%H_00") + ext
+        self.filename_calb = 'eq_1_6b_20120706_20130403' + ext
+        path = self.PATH_CALB + self.filename_calb
 
-        extension = self.path_to_calb.split('.')[-1]
-        if extension == 'txt':
-            self._load_calb_txt()
-        elif extension == 'csv':
-            self._load_calb_csv()
-        elif extension == 'db':
+        if ext == 'txt':
+            self._load_calb_txt(path)
+        elif ext == 'csv':
+            self._load_calb_csv(path)
+        elif ext == '':
             self._load_calb_db()
 
         logger.info("Interpolating and applying to data")
@@ -343,10 +332,10 @@ class BSAData():
 
         self.is_calibrated = True
 
-    def _write_fits(self, path_to_output):
+    def _write_fits(self):
         raise NotImplementedError
 
-    def _write_fil(self, path_to_output, beams):
+    def _write_fil(self, ibeam):
         """
         Write calibrated data to .fil files.
 
@@ -356,7 +345,51 @@ class BSAData():
 
         Parameters
         ----------
-        path_to_output : str
+        ibeam : int
+            Beam index
+
+        """
+        header = {
+         'az_start': self.az,
+         'data_type': 1,
+         'fch1': self.fbands[-1],
+         'foff': -self.wbands[-1],
+         'ibeam': ibeam,
+         'machine_id': 10000,
+         'nbeams': self.data.shape[1],
+         'nbits': 32,
+         'nchans': self.data.shape[2] - 1,  # Excluding sum of channels
+         'nifs': 1,
+         'nsamples': self.data.shape[0],
+         'rawdatafile': self.filename,
+         # Declination for central frequency channel
+         'src_dej': fmt_angle(DeltaAngle(r=np.median(self.dej[ibeam])).d,
+                              s1='', s2='', s3='', pre=2),
+         # RA at the beginning of the observation, central freq channel
+         'src_raj': fmt_angle(AlphaAngle(r=np.median(self.ra[0, ibeam])).h,
+                              s1='', s2='', s3='', pre=2),
+         'za_start': np.median(self.za[ibeam]),
+         'telescope_id': 10000,
+         'tsamp': self.resolution,
+         'tstart': self.mjd[0]
+        }
+        path = self.PATH_OUTPUT \
+            + f"{self.filename.split('.')[0]}beam{ibeam}.fil"
+
+        beam = self.data[:, ibeam, :-1]
+        logger.info(f'Writing {beam.shape[1]} frequency bands '
+                    f'of {beam.shape[0]} samples to {path}')
+        sigproc_write(path, header, np.flip(beam, 1))
+
+    def write(self, beams=None, output_type='fil'):
+        """
+        Write calibrated data to .fil or .fits files.
+
+        Resulting files contain header and observations data of shape
+        (`self.nsamples`, `self.nbands`)
+
+        Parameters
+        ----------
         beams : array_like or None
             Array of beams' indices starting from zero. If set to None,
             the method will write `self.nbeams` files (one file per beam).
@@ -366,73 +399,23 @@ class BSAData():
             raise ValueError("You have to process data first")
         if not self.is_calibrated:
             warnings.warn('Data has not been calibrated.')
+        for ibeam in beams:
+            if ibeam > self.nbeams - 1:
+                raise ValueError(f"Beams must be between 0 and {self.nbeams}")
 
-        if beams is None:
-            beams = np.arange(self.nbeams)
-        if isinstance(beams, int):
-            beams = np.array([beams])
+        beams = np.arange(self.nbeams) if beams is None else beams
+        beams = np.array([beams]) if isinstance(beams, int) else beams
 
-        path_to_output += '/' if path_to_output[-1] != '/' else ''
-        for ibeam, beam in enumerate(
-                        np.moveaxis(self.data, 0, 1)[beams, :, :-1], beams[0]):
-            header = {
-             'az_start': self.az,
-             'data_type': 1,
-             'fch1': self.fbands[-1],
-             'foff': -self.wbands[-1],
-             'ibeam': ibeam,
-             'machine_id': 10000,
-             'nbeams': self.data.shape[1],
-             'nbits': 32,
-             'nchans': self.data.shape[2] - 1,  # Excluding sum of channels
-             'nifs': 1,
-             'nsamples': self.data.shape[0],
-             'rawdatafile': self.path_to_data.split('/')[-1],
-             # Declination for central frequency channel
-             'src_dej': fmt_angle(DeltaAngle(r=np.median(self.dej[ibeam])).d,
-                                  s1='', s2='', s3='', pre=2),
-             # RA at the beginning of the observation, central freq channel
-             'src_raj': fmt_angle(AlphaAngle(r=np.median(self.ra[0, ibeam])).h,
-                                  s1='', s2='', s3='', pre=2),
-             'za_start': np.median(self.za[ibeam]),
-             'telescope_id': 10000,
-             'tsamp': self.resolution,
-             'tstart': self.mjd[0]
-            }
-            filename = (path_to_output
-                        + ''.join(self.path_to_data
-                                      .split('/')[-1]
-                                      .split('.')[:-1])
-                        + f'beam{ibeam}.fil')
-
-            logger.info(f'Writing {beam.shape[1]} frequency bands '
-                        f'of {beam.shape[0]} samples to {filename}')
-            sigproc_write(filename, header, np.flip(beam, 1))
-
-    def write(self, path_to_output, beams=None, output_type='fil'):
-        """
-        Write calibrated data to .fil or .fits files.
-
-        Resulting files contain header and observations data of shape
-        (`self.nsamples`, `self.nbands`)
-
-        Parameters
-        ----------
-        path_to_output : str
-        beams : array_like or None
-            Array of beams' indices starting from zero. If set to None,
-            the method will write `self.nbeams` files (one file per beam).
-
-        """
         if output_type == 'fil':
-            self._write_fil(path_to_output, beams)
+            for ibeam in beams:
+                self._write_fil(ibeam)
         elif output_type == 'fits':
-            self._write_fits(path_to_output)
+            self._write_fits()
         else:
             raise ValueError("output_type must be one of the following: \
-                              {'fil', 'fits'}")
+                              ['fil', 'fits']")
 
-    def convert(self, paths, limits=None, beams=None, output_type='fil'):
+    def convert(self, date, limits=None, beams=None, output_type='fil'):
         """
         Convert data from .pnt, .pnthr, .csv files or from BSADatabase to .fil.
 
@@ -448,7 +431,6 @@ class BSAData():
             the method will write `self.nbeams` files (one file per beam).
 
         """
-        self.read(path_to_data=paths[0], limits=limits)
-        self.calibrate(path_to_calb=paths[1])
-        self.write(path_to_output=paths[2], beams=beams,
-                   output_type=output_type)
+        self.read(date=date, limits=limits)
+        self.calibrate()
+        self.write(beams=beams, output_type=output_type)
