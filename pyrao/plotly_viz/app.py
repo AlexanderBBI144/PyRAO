@@ -1,32 +1,35 @@
 from datetime import datetime as dt
 
-from pyrao import BSAData
-
 import pandas as pd
 import numpy as np
 
 import dash
+import dash_daq as daq
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
-from plotly import tools
-from plotly.graph_objs import Scatter, Scattergl, Figure
-from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
+import uuid
+import logging
 
 from flask_caching import Cache
-import os
-import time
-import uuid
-import json
+# from pyrao.plotly_viz.data import get_data, get_available_dates
+# from pyrao.plotly_viz.figure import get_figure1, get_figure2, get_figure3
+# from pyrao.plotly_viz.figure import get_figures
+from data import get_data, get_available_dates
+from figure import get_figure1, get_figure2, get_figure3
+from figure import get_figures
+
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG)
+
+logger = logging.getLogger(name="pyrao.plotly_viz.app")
 
 """
 СДЕЛАТЬ ВСЕ ГРАФИКИ SUBPLOT'ами
 УДАЛЯТЬ КАЛИБРАЦИОННЫЕ ПЕРИОДЫ
 """
-
-PATH = '~/Documents/GitHub/astro/PyRAO/pyrao/plotly_viz/'
-BSAData.PATH_DATA = PATH
-BSAData.PATH_CALB = PATH
 
 app = dash.Dash(__name__)
 cache = Cache(app.server, config={
@@ -41,164 +44,40 @@ cache = Cache(app.server, config={
     'CACHE_THRESHOLD': 50
 })
 
-datetime_format = '%d%m%y_%H_00'
-datetime_min = "2012-07-07T04:00"
-datetime_max = "2012-07-07T04:59"
-datetime_init = "2012-07-07T04:00"
-
-
-def _read_file(date):
-    data = BSAData()
-    data.read()
-    data.calibrate()
-    return data
-
-
-def get_data(session_id, date):
-    """Read file and return two arrays: data matrix and datetime index."""
-    # old_date = date[0]
-    # new_date = date[1]
-    new_date = date
-
-    # @cache.memoize()
-    def query_data(session_id, new_date):
-        """
-        Query data from source.
-
-        Здесь нужно реализовать взаимодействие с БД
-        и доступ к файлу по id времени.
-        """
-        data = _read_file(new_date)
-
-        return data.data, data.dt
-
-    data, datetimes = query_data(session_id, new_date)
-
-    new_datetime = pd.to_datetime(new_date)
-    start_dt = np.datetime64(new_datetime)
-    end_dt = start_dt + np.timedelta64(1, 'h')
-    start_ix = np.where(datetimes >= start_dt)[0][0]
-    end_ix = np.where(datetimes <= end_dt)[0][-1]
-
-    return data[start_ix:end_ix], datetimes[start_ix:end_ix]
-
-
-def create_traces(data, datetimes, n_channels, use_gradient):
-    traces = [
-        Scattergl(
-            x=datetimes,
-            y=data[:, i],
-            xaxis=f'x{i + 1}',
-            yaxis=f'y{i + 1}',
-            line={
-                'color': ('rgb(0, 0, 255)'),
-                'width': 0.7
-            }
-        ) for i in range(n_channels)
-    ]
-    if use_gradient:
-        for i, trace in enumerate(traces):
-            trace.line['color'] = \
-                f'rgb({255*i/n_channels}, 0, {255*(1-i/n_channels)})'
-    return traces
-
-
-def create_annotations(data, n_channels):
-    return [
-        Annotation(
-            x=-0.06,
-            y=data[:, i].mean(),
-            xref='paper',
-            yref=f'y{i + 1}',
-            text=f'{i + 1}',
-            # font=Font(size=9),
-            showarrow=False
-        ) for i in np.arange(n_channels)
-    ]
-
-
-def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
-    n_channels = data.shape[1]
-    datetimes = [
-        dt.utcfromtimestamp((datetime + np.timedelta64(3, 'h')).tolist()/1e9)
-        for datetime in datetimes
-    ]
-    domains = np.linspace(1, 0, n_channels + 1)
-
-    fig = tools.make_subplots(
-        rows=n_channels,
-        cols=1,
-        # specs=[[{}]] * n_channels,
-        shared_xaxes=True,
-        shared_yaxes=True,
-        vertical_spacing=-5,
-        print_grid=False
-    )
-
-    traces = create_traces(data, datetimes, n_channels, use_gradient)
-    for i, trace in enumerate(traces):
-        fig.append_trace(trace, i + 1, 1)
-        fig['layout'].update({
-            f'yaxis{i + 1}': YAxis({
-                'domain': np.flip(domains[i:i + 2], axis=0),
-                'showticklabels': show_yaxis_ticks,
-                'zeroline': False,
-                'showgrid': False,
-                'automargin': False
-            }),
-            'showlegend': False,
-            'margin': {'t': 50}
-        })
-
-    if not show_yaxis_ticks:
-        annotations = create_annotations(data, n_channels)
-        fig['layout'].update(annotations=annotations)
-
-    fig['layout'].update(autosize=False, height=height)
-    # fig['layout']['xaxis'].update(side='top')
-    # fig['layout']['xaxis'].update(tickformat='%H:%M:%S:%L')
-    # fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-
-    return fig
-
-
-def get_figures(data, datetimes, ray):
-    fig1 = setup_figure(
-        data[:, :, 0],
-        datetimes,
-        use_gradient=False,
-        show_yaxis_ticks=False,
-        height=1000
-    )
-    fig2 = setup_figure(
-        data[:, ray, 0].reshape(-1, 1),
-        datetimes,
-        use_gradient=False,
-        show_yaxis_ticks=True,
-        height=300
-    )
-    fig3 = setup_figure(
-        data[:, ray, 1:],
-        datetimes,
-        use_gradient=True,
-        show_yaxis_ticks=False,
-        height=500
-    )
-    return fig1, fig2, fig3
+DATES = get_available_dates()
+DEFAULT_DATE = DATES[-1].date()
+DEFAULT_TIME = DATES[-1].hour
 
 
 def serve_layout():
     session_id = str(uuid.uuid4())
-    data, datetimes = get_data(session_id, [datetime_init, datetime_init])
-    fig1, fig2, fig3 = get_figures(data, datetimes, 0)
+    # data, datetimes = get_data(session_id, DEFAULT_DATE)
+    # fig1, fig2, fig3 = get_figures(data, datetimes, 0)
     return html.Div(
         id='main-div',
+        className="columns",
+        style={
+            'display': 'inline-block',
+            'vertical-align': 'top',
+            'width': '50%'
+        },
         children=[
-            dcc.Store(id='session-id', storage_type='session'),
-            dcc.Store(id='current-ray', storage_type='session'),
-            dcc.Store(id='datetime', storage_type='session'),
+            dcc.Store(
+                id='session-id',
+                storage_type='session',
+                data=session_id
+            ),
+            dcc.Store(
+                id='current-ray',
+                storage_type='session'
+            ),
+            dcc.Store(
+                id='datetime',
+                storage_type='session'
+            ),
             html.Div(
-                [
+                id='left-div',
+                children=[
                     html.H3('Фильтры:', style={'marginLeft': '50px'}),
                     html.Div(
                         dcc.Dropdown(
@@ -219,27 +98,29 @@ def serve_layout():
                     ),
                     dcc.Graph(
                         id='main-graph',
-                        figure=fig1
+                        figure=None  # fig1
                     )
                 ],
+            ),
+            html.Div(
+                id='right-div',
                 className="columns",
                 style={
                     'display': 'inline-block',
                     'vertical-align': 'top',
                     'width': '50%'
-                }
-            ),
-            html.Div(
-                [
+                },
+                children=[
                     html.H3(
                         'Выберите дату и время: ',
                         style={'marginLeft': '50px'}
                     ),
                     html.Div(
-                        [
-                            dcc.Input(
+                        id='datetime-div',
+                        style={'marginLeft': '50px'},
+                        children=[
+                            dcc.DatePickerSingle(
                                 id='datetime-picker',
-                                type='datetime-local',
                                 style={
                                     'font-weight': '200',
                                     'font-size': '18px',
@@ -252,33 +133,41 @@ def serve_layout():
                                     'width': '300px',
                                     'vertical-align': 'middle'
                                 },
-                                min=datetime_min,
-                                max=datetime_max,
-                                value=datetime_init
+                                min_date_allowed=DATES[0],
+                                max_date_allowed=DATES[-1],
+                                date=DEFAULT_DATE
+                            ),
+                            daq.NumericInput(
+                                id='hour',
+                                size=2,
+                                min=0,
+                                max=23,
+                                value=DEFAULT_TIME
+                            ),
+                            daq.NumericInput(
+                                id='minute',
+                                size=2,
+                                min=0,
+                                max=59,
+                                value=DEFAULT_TIME
                             ),
                             html.Br(),
                             html.Br(),
-                            html.Div(
-                                id='datetime-label')
+                            html.Div(id='datetime-label')
                         ],
-                        style={'marginLeft': '50px'}
                     ),
                     html.Br(),
                     dcc.Graph(
                         id='one-ray-graph',
-                        figure=fig2
+                        figure=None  # fig2
                     ),
                     dcc.Graph(
                         id='freq-graph',
-                        figure=fig3
+                        figure=None  # fig3
                     ),
                     html.Div(id='placeholder')
                 ],
-                className="columns",
-                style={
-                    'display': 'inline-block',
-                    'vertical-align': 'top',
-                    'width': '50%'})
+            )
         ]
     )
 
@@ -286,50 +175,53 @@ def serve_layout():
 app.layout = serve_layout
 
 
-@app.callback([Output('main-graph', 'figure'),
-               Output('one-ray-graph', 'figure'),
-               Output('freq-graph', 'figure')],
-              [Input('datetime', 'data'),
-               Input('current-ray', 'data'),
-               Input('main-graph', 'relayoutData')],
-              [State('session-id', 'data'),
-               State('datetime', 'data'),
-               State('current-ray', 'data'),
-               State('main-graph', 'figure'),
-              State('one-ray-graph', 'figure'),
-              State('freq-graph', 'figure')])
-def update_graphs(date, ray, relayoutData, session_id, old_date, old_ray,
-                  f1, f2, f3):
-    date = date if date is not None else old_date
-    date = date if date is not None else [datetime_init, datetime_init]
-    ray = ray if ray is not None else old_ray
-    ray = ray if ray is not None else 0
+# @app.callback([Output('main-graph', 'figure'),
+#                Output('one-ray-graph', 'figure'),
+#                Output('freq-graph', 'figure')],
+#               [Input('datetime', 'data'),
+#                Input('current-ray', 'data'),
+#                Input('main-graph', 'relayoutData')],
+#               [State('session-id', 'data'),
+#                State('datetime', 'data'),
+#                State('current-ray', 'data'),
+#                State('main-graph', 'figure'),
+#               State('one-ray-graph', 'figure'),
+#               State('freq-graph', 'figure')])
+# def update_graphs(date, ray, relayoutData, session_id, old_date, old_ray,
+#                   f1, f2, f3):
+#     date = date if date is not None else old_date
+#     date = date if date is not None else DEFAULT_DATE
+#     ray = ray if ray is not None else old_ray
+#     ray = ray if ray is not None else 0
+#
+#     logger.info('upd graphs', date, session_id, ray)
+#     logger.info(relayoutData)
+#     if f1 is not None and f2 is not None and f3 is not None and \
+#             relayoutData is not None:
+#         f1['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+#         f1['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+#         f2['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+#         f2['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+#         f3['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
+#         f3['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
+#         return f1, f2, f3
+#
+#     data, datetimes = get_data(session_id, date)
+#
+#     return get_figures(data, datetimes, ray)
 
-    print('upd graphs', date, session_id, ray)
-    print(relayoutData)
-    if f1 is not None and f2 is not None and f3 is not None and \
-            relayoutData is not None:
-        f1['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
-        f1['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
-        f2['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
-        f2['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
-        f3['layout']['xaxis']['range'] = [relayoutData['xaxis.range[0]']]
-        f3['layout']['xaxis']['range'].append(relayoutData['xaxis.range[1]'])
-        return f1, f2, f3
-
-    data, datetimes = get_data(session_id, date)
-
-    return get_figures(data, datetimes, ray)
-
-
-@app.callback(Output('session-id', 'data'),
-              [Input('session-id', 'modified_timestamp')],
-              [State('session-id', 'data')])
-def update_session_id(modified_timestamp, data):
-    print('sess id', modified_timestamp, data)
-    if modified_timestamp is None:
-        return data if data is not None else str(uuid.uuid4())
-    return data if data is not None else str(uuid.uuid4())
+# Не нужно, т.к. значение по умолчанию может быть корректно получено
+# (нигде не встречается Output(session_id, 'data'))
+# https://dash.plot.ly/dash-core-components/store
+#
+# @app.callback(Output('session-id', 'data'),
+#               [Input('session-id', 'modified_timestamp')],
+#               [State('session-id', 'data')])
+# def update_session_id(modified_timestamp, data):
+#     logger.info('sess id', modified_timestamp, data)
+#     if modified_timestamp is None:
+#         return data if data is not None else str(uuid.uuid4())
+#     return data if data is not None else str(uuid.uuid4())
 
 
 @app.callback(Output('current-ray', 'data'),
@@ -338,72 +230,56 @@ def update_session_id(modified_timestamp, data):
 def update_ray(clickData, session_id):
     if clickData is not None:
         ray_n = clickData['points'][0]['curveNumber']
-        print(f"ray {ray_n} {session_id}")
+        logger.info(f"ray {ray_n} {session_id}")
         return clickData['points'][0]['curveNumber']
-    print("ray is None")
+    logger.info("ray is None")
     return 0
 
-
-@app.callback(Output('datetime', 'data'),
-              [Input('datetime-picker', 'value')],
-              [State('session-id', 'data'),
-               State('datetime', 'data')])
-def update_datetime(value, session_id, data):
-    print('dt', value, data, session_id)
-    return (data[1], value) if data is not None else (value, value)
+#
+# @app.callback(Output('datetime', 'data'),
+#               [Input('datetime-picker', 'value')],
+#               [State('session-id', 'data'),
+#                State('datetime', 'data')])
+# def update_datetime(value, session_id, data):
+#     logger.info('dt', value, data, session_id)
+#     return (data[1], value) if data is not None else (value, value)
 
 
 @app.callback(
     Output('placeholder', 'children'),
     [Input('filters-dropdown', 'value')])
 def update_output(value):
-    print(value)
+    logger.info(f"filters-dropdown {value}: {type(value)}")
 
 
-"""@app.callback(Output('main-graph', 'figure'),
-              [Input('session-id', 'children'),
-               Input('datetime-picker', 'value')])
-def update_main_graph(session_id, value):
-    data, datetimes = get_data(session_id, value)
-    data = data[:, :, 0]
-    return setup_figure(data,
-                        datetimes,
-                        use_gradient=False,
-                        show_yaxis_ticks=False,
-                        height=1000)
+@app.callback(Output('main-graph', 'figure'),
+              [Input('datetime-picker', 'date')],
+              [State('session-id', 'data')])
+def update_main_graph(date, session_id):
+    logger.info(f"datetime-picker {date}: {type(date)}")
+    data, datetimes = get_data(session_id, date)
+    return get_figure1(data, datetimes)
 
-@app.callback(Output('one-ray-graph', 'figure'),
-              [Input('session-id', 'children'),
-               Input('datetime-picker', 'value'),
-               Input('current-ray', 'children')])
-def update_one_ray_graph(session_id, value, new_ray):
-    data, datetimes = get_data(session_id, value)
-    data = data[:, new_ray, 0].reshape(-1, 1)
-    fig = setup_figure(data,
-                       datetimes,
-                       use_gradient=False,
-                       show_yaxis_ticks=True,
-                       height=300)
-    return fig
 
-@app.callback(Output('freq-graph', 'figure'),
-              [Input('session-id', 'children'),
-               Input('datetime-picker', 'value'),
-               Input('current-ray', 'children')])
-def update_freq_graph(session_id, value, new_ray):
-    data, datetimes = get_data(session_id, value)
-    data = data[:, new_ray, 1:]
-    fig = setup_figure(data,
-                       datetimes,
-                       use_gradient=True,
-                       show_yaxis_ticks=False,
-                       height=500)
-    return fig"""
-
-# Callbacks for synchronous updating xaxis on all graphs
-
-# def
-
+@app.callback([Output('one-ray-graph', 'figure'),
+               Output('freq-graph', 'figure')],
+              [Input('datetime-picker', 'date'),
+               Input('current-ray', 'data')],
+              [State('session-id', 'data')])
+def update_one_ray_graph(date, new_ray, session_id):
+    data, datetimes = get_data(session_id, date)
+    fig2 = get_figure2(data, datetimes, new_ray)
+    fig3 = get_figure3(data, datetimes, new_ray)
+    return fig2, fig3
+#
+# @app.callback(Output('freq-graph', 'figure'),
+#               [Input('session-id', 'data'),
+#                Input('datetime-picker', 'value'),
+#                Input('current-ray', 'data')])
+# def update_freq_graph(session_id, value, new_ray):
+#     data, datetimes = get_data(session_id, value)
+#     return get_figure3(data, datetimes, new_ray)
+#
 
 if __name__ == '__main__':
     app.run_server(debug=True)

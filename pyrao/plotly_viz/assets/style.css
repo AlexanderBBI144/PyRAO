@@ -1,0 +1,27 @@
+#date-picker {
+  width: 120px
+}
+
+.time-picker {
+  width: 40px
+}
+
+#date-picker,
+.time-picker {
+  height: 30px;
+  margin-bottom: 20px
+}
+
+.columns {
+  width: 45%;
+  min-width: 500px;
+  background-color: #aaa;
+  margin-bottom: 20px;
+  height: 500px;
+  float: left;
+  margin-right: 20px
+}
+
+footer {
+  float: left
+}
