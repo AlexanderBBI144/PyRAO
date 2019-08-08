@@ -1,9 +1,18 @@
 
+import logging
 import numpy as np
+from tqdm import tqdm
 from datetime import datetime as dt
 from plotly.graph_objs import Scatter, Scattergl, Figure
 from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 from plotly import tools
+
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG)
+
+logger = logging.getLogger(name="pyrao.plotly_viz.figure")
 
 
 def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
@@ -26,7 +35,7 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
     )
 
     traces = create_traces(data, datetimes, n_channels, use_gradient)
-    for i, trace in enumerate(traces):
+    for i, trace in tqdm(enumerate(traces), desc='Appending traces to figure'):
         fig.append_trace(trace, i + 1, 1)
         fig['layout'].update({
             f'yaxis{i + 1}': YAxis({
@@ -49,10 +58,12 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
     # fig['layout']['xaxis'].update(tickformat='%H:%M:%S:%L')
     # fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
 
+    logger.info("Figure set up")
     return fig
 
 
 def create_traces(data, datetimes, n_channels, use_gradient):
+    logger.info("Creating traces")
     traces = [
         Scattergl(
             x=datetimes,
@@ -69,10 +80,12 @@ def create_traces(data, datetimes, n_channels, use_gradient):
         for i, trace in enumerate(traces):
             trace.line['color'] = \
                 f'rgb({255*i/n_channels}, 0, {255*(1-i/n_channels)})'
+    logger.info("Trace created")
     return traces
 
 
 def create_annotations(data, n_channels):
+    logger.info("Creating annotations")
     return [
         Annotation(
             x=-0.06,
@@ -87,6 +100,7 @@ def create_annotations(data, n_channels):
 
 
 def get_figure1(data, datetimes):
+    logger.info("Setting up figure1")
     return setup_figure(
         data[:, :, 0],
         datetimes,
@@ -97,6 +111,7 @@ def get_figure1(data, datetimes):
 
 
 def get_figure2(data, datetimes, ray):
+    logger.info("Setting up figure2")
     return setup_figure(
         data[:, ray, 0].reshape(-1, 1),
         datetimes,
@@ -107,6 +122,7 @@ def get_figure2(data, datetimes, ray):
 
 
 def get_figure3(data, datetimes, ray):
+    logger.info("Setting up figure3")
     return setup_figure(
         data[:, ray, 1:],
         datetimes,
