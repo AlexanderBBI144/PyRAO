@@ -299,7 +299,7 @@ class BSAData():
     def _load_calb_csv(self, path):
         raise NotImplementedError
 
-    def calibrate(self):
+    def calibrate(self, filename):
         """
         Calibrate data.
 
@@ -321,7 +321,7 @@ class BSAData():
 
         ext = self.CALB_EXT if self.CALB_EXT is not None else ''
         # self.filename_calb = date.strftime("%y%m%d_%H_00") + ext
-        self.filename_calb = 'eq_1_6b_20160101_20161231' + ext
+        self.filename_calb = filename + ext
         path = self.PATH_CALB + self.filename_calb
 
         if ext == '.txt':
