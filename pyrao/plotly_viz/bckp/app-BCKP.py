@@ -6,7 +6,6 @@ import numpy as np
 import dash
 import dash_daq as daq
 from dash.dependencies import Input, Output, State
-from dash.development.base_component import Component
 import dash_core_components as dcc
 import dash_html_components as html
 import uuid
@@ -46,114 +45,131 @@ cache = Cache(app.server, config={
 })
 
 DATES = get_available_dates()
-DEFAULT_DATE = DATES[-1].date().strftime("%Y-%m-%d")
-DEFAULT_HOUR = DATES[-1].hour
-DEFAULT_MINUTE = 0
-DEFAULT_RAY = 0
+DEFAULT_DATE = DATES[-1].date()
+DEFAULT_TIME = DATES[-1].hour
 
 
 def serve_layout():
     session_id = str(uuid.uuid4())
-    data, datetimes = get_data(session_id, DEFAULT_DATE, DEFAULT_HOUR, DEFAULT_MINUTE, stand=1)
-    fig1 = get_figure1(data, datetimes)
-    fig2 = get_figure2(data, datetimes, DEFAULT_RAY)
-    fig3 = get_figure3(data, datetimes, DEFAULT_RAY)
-
-    return html.Div(id='body', children=[
-        html.Header(children=[
+    # data, datetimes = get_data(session_id, DEFAULT_DATE)
+    # fig1, fig2, fig3 = get_figures(data, datetimes, 0)
+    return html.Div(
+        id='main-div',
+        className="columns",
+        style={
+            'display': 'inline-block',
+            'vertical-align': 'top',
+            'width': '50%'
+        },
+        children=[
             dcc.Store(
                 id='session-id',
                 storage_type='session',
                 data=session_id
             ),
             dcc.Store(
-                id='curr-ray',
-                storage_type='session',
-                data=DEFAULT_RAY
-            )
-        ]),
-        html.Main(children=[
-            html.Div(
-                id="datetime-div",
-                children=[
-                    html.P("Выберите дату и время:"),
-                    dcc.DatePickerSingle(
-                        id="date",
-                        min_date_allowed=DATES[0],
-                        max_date_allowed=DATES[-1],
-                        date=DEFAULT_DATE
-                    ),
-                    daq.NumericInput(
-                        #"ч.",
-                        id="hour",
-                        min=0,
-                        max=23,
-                        value=DEFAULT_HOUR
-                    ),
-                    daq.NumericInput(
-                        #"м.",
-                        id="minute",
-                        min=0,
-                        max=59,
-                        value=DEFAULT_MINUTE
-                    ),
-                    html.Button("Обновить", id="refresh")
-                ]
+                id='current-ray',
+                storage_type='session'
+            ),
+            dcc.Store(
+                id='datetime',
+                storage_type='session'
             ),
             html.Div(
-                id="filter-div",
+                id='left-div',
                 children=[
-                    html.P("Укажите фильтры:"),
-                    dcc.Dropdown(
-                        id="filters-dropdown",
-                        options=[
-                            {'label': 'Multiply', 'value': 'Multiply'},
-                            {'label': 'Cut', 'value': 'Cut'},
+                    html.H3('Фильтры:', style={'marginLeft': '50px'}),
+                    html.Div(
+                        dcc.Dropdown(
+                            id="filters-dropdown",
+                            options=[
+                                {'label': 'Multiply', 'value': 'Multiply'},
+                                {'label': 'Cut', 'value': 'Cut'},
+                            ],
+                            value=[],
+                            multi=True
+                        ),
+                        style={'marginLeft': '50px', 'width': "500px"}
+                    ),
+                    html.Br(),
+                    html.Label(
+                        'График интенсивности радиосигнала для телескопа BSA',
+                        style={'marginLeft': '50px'}
+                    ),
+                    dcc.Graph(
+                        id='main-graph',
+                        figure=None  # fig1
+                    )
+                ],
+            ),
+            html.Div(
+                id='right-div',
+                className="columns",
+                style={
+                    'display': 'inline-block',
+                    'vertical-align': 'top',
+                    'width': '50%'
+                },
+                children=[
+                    html.H3(
+                        'Выберите дату и время: ',
+                        style={'marginLeft': '50px'}
+                    ),
+                    html.Div(
+                        id='datetime-div',
+                        style={'marginLeft': '50px'},
+                        children=[
+                            dcc.DatePickerSingle(
+                                id='datetime-picker',
+                                style={
+                                    'font-weight': '200',
+                                    'font-size': '18px',
+                                    'line-height': '28px',
+                                    'margin': '0',
+                                    'padding': '8px',
+                                    'background': '#fff',
+                                    'position': 'relative',
+                                    'display': 'inline-block',
+                                    'width': '300px',
+                                    'vertical-align': 'middle'
+                                },
+                                min_date_allowed=DATES[0],
+                                max_date_allowed=DATES[-1],
+                                date=DEFAULT_DATE
+                            ),
+                            daq.NumericInput(
+                                id='hour',
+                                size=2,
+                                min=0,
+                                max=23,
+                                value=DEFAULT_TIME
+                            ),
+                            daq.NumericInput(
+                                id='minute',
+                                size=2,
+                                min=0,
+                                max=59,
+                                value=DEFAULT_TIME
+                            ),
+                            html.Br(),
+                            html.Br(),
+                            html.Div(id='datetime-label')
                         ],
-                        value=[],
-                        multi=True
                     ),
-                    html.Button("Применить", id="apply")
-                ]
-            ),
-            html.Div(
-                id="main-fig-col",
-                children=[
-                    html.P("Многолучевая диаграмма"),
+                    html.Br(),
                     dcc.Graph(
-                        id="main-fig",
-                        figure=fig1
-                    )
-                ]
-            ),
-            html.Div(
-                id="one-ray-fig-col",
-                children=[
-                    html.P("Однолучевая диаграмма"),
+                        id='one-ray-graph',
+                        figure=None  # fig2
+                    ),
                     dcc.Graph(
-                        id="one-ray-fig",
-                        figure=fig2
-                    )
-                ]
-            ),
-            html.Div(
-                id="freq-fig-col",
-                children=[
-                    html.P("Частотная диаграмма"),
-                    dcc.Graph(
-                        id="freq-fig",
-                        figure=fig3
-                    )
-                ]
-            ),
-        ]),
-        html.Footer(
-            children=[
-                html.Label("Copyright 2019"),
-                dcc.Link("Alexander Somov", href="https://github.com/AlexanderBBI144/PyRAO")
-            ]
-        )
-    ])
+                        id='freq-graph',
+                        figure=None  # fig3
+                    ),
+                    html.Div(id='placeholder')
+                ],
+            )
+        ]
+    )
 
 
 app.layout = serve_layout
@@ -208,8 +224,8 @@ app.layout = serve_layout
 #     return data if data is not None else str(uuid.uuid4())
 
 
-@app.callback(Output('curr-ray', 'data'),
-              [Input('main-fig', 'clickData')],
+@app.callback(Output('current-ray', 'data'),
+              [Input('main-graph', 'clickData')],
               [State('session-id', 'data')])
 def update_ray(clickData, session_id):
     if clickData is not None:
@@ -228,37 +244,33 @@ def update_ray(clickData, session_id):
 #     logger.info('dt', value, data, session_id)
 #     return (data[1], value) if data is not None else (value, value)
 
-#
-# @app.callback(
-#     Output('placeholder', 'children'),
-#     [Input('filters-dropdown', 'value')])
-# def update_output(value):
-#     logger.info(f"filters-dropdown {value}: {type(value)}")
+
+@app.callback(
+    Output('placeholder', 'children'),
+    [Input('filters-dropdown', 'value')])
+def update_output(value):
+    logger.info(f"filters-dropdown {value}: {type(value)}")
 
 
-# @app.callback(Output('main-fig', 'figure'),
-#               [Input('date', 'date')],
-#               [State('session-id', 'data')])
-# def update_main_graph(date, session_id):
-#     logger.info(f"datetime-picker {date}: {type(date)}")
-#     data, datetimes = get_data(session_id, date)
-#     return get_figure1(data, datetimes)
+@app.callback(Output('main-graph', 'figure'),
+              [Input('datetime-picker', 'date')],
+              [State('session-id', 'data')])
+def update_main_graph(date, session_id):
+    logger.info(f"datetime-picker {date}: {type(date)}")
+    data, datetimes = get_data(session_id, date)
+    return get_figure1(data, datetimes)
 
-@app.callback([Output('main-fig', 'figure'),
-               Output('one-ray-fig', 'figure'),
-               Output('freq-fig', 'figure')],
-              [Input('refresh', 'n_clicks'),
-               Input('curr-ray', 'data')],
-              [State('session-id', 'data'),
-               State('date', 'date'),
-               State('hour', 'value'),
-               State('minute', 'value')])
-def update_graphs(n, new_ray, session_id, date, hour, minute):
-    data, datetimes = get_data(session_id, date, hour, minute, stand=1)
-    fig1 = get_figure1(data, datetimes)
+
+@app.callback([Output('one-ray-graph', 'figure'),
+               Output('freq-graph', 'figure')],
+              [Input('datetime-picker', 'date'),
+               Input('current-ray', 'data')],
+              [State('session-id', 'data')])
+def update_one_ray_graph(date, new_ray, session_id):
+    data, datetimes = get_data(session_id, date)
     fig2 = get_figure2(data, datetimes, new_ray)
     fig3 = get_figure3(data, datetimes, new_ray)
-    return fig1, fig2, fig3
+    return fig2, fig3
 #
 # @app.callback(Output('freq-graph', 'figure'),
 #               [Input('session-id', 'data'),

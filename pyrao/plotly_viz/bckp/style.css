@@ -1,0 +1,45 @@
+#date-picker {
+  width: 120px
+}
+
+.time-picker {
+  width: 40px
+}
+
+#date-picker,
+.time-picker {
+  height: 30px;
+  margin-bottom: 20px
+}
+
+#left-column,
+#right-column {
+  width: 45%;
+  min-width: 500px;
+  background-color: #aaa;
+  margin-bottom: 20px;
+  height: 1020px;
+  float: left;
+  margin-right: 20px
+}
+
+#right-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 300px 700px;
+  grid-gap: 20px
+}
+
+#one-ray-fig {
+  grid-row: 0
+  background-color: #ddd
+}
+#freq-fig {
+  grid-row: 1
+  background-color: #eee
+}
+
+footer {
+  float: left;
+  width: 100%
+}

@@ -2,7 +2,7 @@
 <html style="margin: 20px">
   <head>
     <meta charset="utf-8">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style2.css">
     <title>Телескоп BSA3</title>
   </head>
   <body>
@@ -13,14 +13,27 @@
       <div id='datetime-div'>
         <p>Выберите дату и время:</p>
         <input id='date-picker' type="datetime"></input>
-        <input class='time-picker' type="time"> ч.</input>
-        <input class='time-picker' type="time"> м.</input>
+        <input class='time-picker' type="time" placeholder="HH"> ч.</input>
+        <input class='time-picker' type="time" placeholder="MM"> м.</input>
+        <button id='button' type="button" name="Обновить"></button>
       </div>
-      <div class='columns'>
-        abc
+      <div id='main-fig-col'>
+        <p>Лучевая диаграмма</p>
+        <div id='main-fig'>
+
+        </div>
       </div>
-      <div class='columns'>
-        def
+      <div id='one-ray-fig-col'>
+        <p>Однолучевая диаграмма</p>
+        <div id='one-ray-fig'>
+
+        </div>
+      </div>
+      <div id='freq-fig-col'>
+        <p>Частотная диаграмма</p>
+        <div id='freq-fig'>
+
+        </div>
       </div>
     </main>
     <footer>

@@ -218,7 +218,7 @@ class BSAData():
                 print((a[0] & bytes([240])[0]) >> 4)
         """
 
-    def read(self, date, limits=None):
+    def read(self, date, stand, limits=None):
         """
         Read data from .pnt, .pnthr, .csv files or from BSADatabase.
 
@@ -229,9 +229,14 @@ class BSAData():
 
         """
         logger.info("Reading data")
-
+        if stand == 1:
+            stand_name = 'N1_'
+        elif stand == 2:
+            stand_name = 'N2_'
+        else:
+            stand_name = ''
         ext = self.DATA_EXT if self.DATA_EXT is not None else ''
-        self.filename = date.strftime("%y%m%d_%H_00") + ext
+        self.filename = date.strftime(f"%d%m%y_%H_{stand_name}00{ext}")
         path = self.PATH_DATA + self.filename
 
         if ext == '.pnt' or ext == '.pnthr':
@@ -261,7 +266,7 @@ class BSAData():
 
     def _load_calb_txt(self, path):
         # ВОЗМОЖНО ТОЖЕ ПОМЕНЯТЬ ЛУЧИ
-        logger.info("Reading calibration file")
+        logger.info(f"Reading {path}")
 
         with open(path) as f:
             d = [[y.strip() for y in x.split('|')] for x in f.readlines()]
@@ -316,12 +321,12 @@ class BSAData():
 
         ext = self.CALB_EXT if self.CALB_EXT is not None else ''
         # self.filename_calb = date.strftime("%y%m%d_%H_00") + ext
-        self.filename_calb = 'eq_1_6b_20120706_20130403' + ext
+        self.filename_calb = 'eq_1_6b_20160101_20161231' + ext
         path = self.PATH_CALB + self.filename_calb
 
-        if ext == 'txt':
+        if ext == '.txt':
             self._load_calb_txt(path)
-        elif ext == 'csv':
+        elif ext == '.csv':
             self._load_calb_csv(path)
         elif ext == '':
             self._load_calb_db()

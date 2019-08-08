@@ -92,7 +92,7 @@ def get_figure1(data, datetimes):
         datetimes,
         use_gradient=False,
         show_yaxis_ticks=False,
-        height=1000
+        height=900
     )
 
 
@@ -102,7 +102,7 @@ def get_figure2(data, datetimes, ray):
         datetimes,
         use_gradient=False,
         show_yaxis_ticks=True,
-        height=300
+        height=200
     )
 
 
@@ -112,7 +112,7 @@ def get_figure3(data, datetimes, ray):
         datetimes,
         use_gradient=True,
         show_yaxis_ticks=False,
-        height=500
+        height=600
     )
 
 

@@ -1,27 +1,108 @@
-#date-picker {
-  width: 120px
+#body {
+  display: grid;
+  grid-template-areas:
+  "header"
+  "main"
+  "footer";
+  grid-template-rows: 30px 1fr 30px;
+  grid-template-columns: 1fr;
+  grid-row-gap: 10px;
+  grid-column-gap: 10px;
+  /*height: 100vh;*/
+  margin: 0;
 }
 
-.time-picker {
-  width: 40px
+main {
+  grid-area: main;
+  display: grid;
+  grid-template-areas:
+  "datetime filter"
+  "mainfig onerayfig"
+  "mainfig freqfig";
+  grid-template-rows: 100px 300px 1000px;
+  grid-template-columns: 1fr 1fr;
+  grid-row-gap: 10px;
+  grid-column-gap: 10px;
+  margin: 0;
 }
 
-#date-picker,
-.time-picker {
-  height: 30px;
-  margin-bottom: 20px
+/* Stack the layout on small devices/viewports. */
+@media all and (max-width: 1000px) {
+  main {
+    grid-template-areas:
+    "datetime"
+    "filter"
+    "mainfig"
+    "onerayfig"
+    "freqfig";
+    grid-template-rows: 100px 100px 500px 300px 700px;
+    grid-template-columns: minmax(500px, 1fr);
+  }
 }
 
-.columns {
-  width: 45%;
-  min-width: 500px;
-  background-color: #aaa;
-  margin-bottom: 20px;
-  height: 500px;
-  float: left;
-  margin-right: 20px
+header,
+footer {
+  padding-top: 5px;
+}
+
+header,
+footer,
+#datetime-div,
+#filter-div,
+#main-fig-col,
+#one-ray-fig-col,
+#freq-fig-col {
+  padding-left: 10px;
+  /*background: gold;*/
+}
+
+#datetime-div {
+  grid-area: datetime;
 }
 
 footer {
-  float: left
+  grid-area: footer;
+}
+
+#main-fig-col {
+  grid-area: mainfig;
+}
+
+#one-ray-fig-col {
+  grid-area: onerayfig;
+}
+
+#freq-fig-col {
+  grid-area: freqfig;
+}
+
+#date {
+  width: 120px;
+  margin-right: 20px;
+}
+
+#hour,
+#minute {
+  width: 50px;
+  margin-right: 10px;
+}
+
+#refresh,
+#apply {
+  width: 120px
+}
+
+#filters-dropdown {
+  width: 200px;
+  margin-right: 10px;
+}
+
+#date,
+#hour,
+#minute,
+#refresh,
+#apply,
+#filters-dropdown {
+  height: 33px;
+  float: left;
 }
