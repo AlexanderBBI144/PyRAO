@@ -50,16 +50,16 @@ DEFAULT_DATE = DATES[-1].date().strftime("%Y-%m-%d")
 DEFAULT_HOUR = DATES[-1].hour
 DEFAULT_MINUTE = 0
 DEFAULT_RAY = 0
+data, datetimes = get_data(None, DEFAULT_DATE, DEFAULT_HOUR, DEFAULT_MINUTE, stand=1)
+DEFAULT_FIGURES = get_figures(data, datetimes, DEFAULT_RAY)
 
 
 def serve_layout():
     session_id = str(uuid.uuid4())
-    data, datetimes = get_data(session_id, DEFAULT_DATE, DEFAULT_HOUR, DEFAULT_MINUTE, stand=1)
-    fig1 = get_figure1(data, datetimes)
-    fig2 = get_figure2(data, datetimes, DEFAULT_RAY)
-    fig3 = get_figure3(data, datetimes, DEFAULT_RAY)
 
-    return html.Div(id='body', children=[
+
+    logger.info("Forming layout")
+    layout = html.Div(id='body', children=[
         html.Header(children=[
             dcc.Store(
                 id='session-id',
@@ -122,7 +122,7 @@ def serve_layout():
                     html.P("Многолучевая диаграмма"),
                     dcc.Graph(
                         id="main-fig",
-                        figure=fig1
+                        figure=DEFAULT_FIGURES[0]
                     )
                 ]
             ),
@@ -132,7 +132,7 @@ def serve_layout():
                     html.P("Однолучевая диаграмма"),
                     dcc.Graph(
                         id="one-ray-fig",
-                        figure=fig2
+                        figure=DEFAULT_FIGURES[1]
                     )
                 ]
             ),
@@ -142,7 +142,7 @@ def serve_layout():
                     html.P("Частотная диаграмма"),
                     dcc.Graph(
                         id="freq-fig",
-                        figure=fig3
+                        figure=DEFAULT_FIGURES[2]
                     )
                 ]
             ),
@@ -154,6 +154,10 @@ def serve_layout():
             ]
         )
     ])
+
+    logger.info("Layout formed")
+
+    return layout
 
 
 app.layout = serve_layout
@@ -244,22 +248,22 @@ def update_ray(clickData, session_id):
 #     data, datetimes = get_data(session_id, date)
 #     return get_figure1(data, datetimes)
 
-@app.callback([Output('main-fig', 'figure'),
-               Output('one-ray-fig', 'figure'),
-               Output('freq-fig', 'figure')],
-              [Input('refresh', 'n_clicks'),
-               Input('curr-ray', 'data')],
-              [State('session-id', 'data'),
-               State('date', 'date'),
-               State('hour', 'value'),
-               State('minute', 'value')])
-def update_graphs(n, new_ray, session_id, date, hour, minute):
-    data, datetimes = get_data(session_id, date, hour, minute, stand=1)
-    fig1 = get_figure1(data, datetimes)
-    fig2 = get_figure2(data, datetimes, new_ray)
-    fig3 = get_figure3(data, datetimes, new_ray)
-    return fig1, fig2, fig3
-#
+# @app.callback([Output('main-fig', 'figure'),
+#                Output('one-ray-fig', 'figure'),
+#                Output('freq-fig', 'figure')],
+#               [Input('refresh', 'n_clicks'),
+#                Input('curr-ray', 'data')],
+#               [State('session-id', 'data'),
+#                State('date', 'date'),
+#                State('hour', 'value'),
+#                State('minute', 'value')])
+# def update_graphs(n, new_ray, session_id, date, hour, minute):
+#     data, datetimes = get_data(session_id, date, hour, minute, stand=1)
+#     fig1 = get_figure1(data, datetimes)
+#     fig2 = get_figure2(data, datetimes, new_ray)
+#     fig3 = get_figure3(data, datetimes, new_ray)
+#     return fig1, fig2, fig3
+# #
 # @app.callback(Output('freq-graph', 'figure'),
 #               [Input('session-id', 'data'),
 #                Input('datetime-picker', 'value'),
