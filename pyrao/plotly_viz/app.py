@@ -20,6 +20,9 @@ from data import get_data, get_available_dates
 from figure import get_figure1, get_figure2, get_figure3
 from figure import get_figures
 
+import cProfile, pstats, io
+from pstats import SortKey
+pr = cProfile.Profile()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -50,8 +53,8 @@ DEFAULT_DATE = DATES[-1].date().strftime("%Y-%m-%d")
 DEFAULT_HOUR = DATES[-1].hour
 DEFAULT_MINUTE = 0
 DEFAULT_RAY = 0
-data, datetimes = get_data(None, DEFAULT_DATE, DEFAULT_HOUR, DEFAULT_MINUTE, stand=1)
-DEFAULT_FIGURES = get_figures(data, datetimes, DEFAULT_RAY)
+# data, datetimes = get_data(None, DEFAULT_DATE, DEFAULT_HOUR, DEFAULT_MINUTE, stand=1)
+# DEFAULT_FIGURES = get_figures(data, datetimes, DEFAULT_RAY)
 
 
 def serve_layout():
@@ -120,9 +123,9 @@ def serve_layout():
                 id="main-fig-col",
                 children=[
                     html.P("Многолучевая диаграмма"),
-                    dcc.Graph(
-                        id="main-fig",
-                        figure=DEFAULT_FIGURES[0]
+                    dcc.Loading(
+                        id="loading-main",
+                        children=[dcc.Graph(id="main-fig")]
                     )
                 ]
             ),
@@ -130,9 +133,9 @@ def serve_layout():
                 id="one-ray-fig-col",
                 children=[
                     html.P("Однолучевая диаграмма"),
-                    dcc.Graph(
-                        id="one-ray-fig",
-                        figure=DEFAULT_FIGURES[1]
+                    dcc.Loading(
+                        id="loading-one-ray",
+                        children=[dcc.Graph(id="one-ray-fig")]
                     )
                 ]
             ),
@@ -140,9 +143,9 @@ def serve_layout():
                 id="freq-fig-col",
                 children=[
                     html.P("Частотная диаграмма"),
-                    dcc.Graph(
-                        id="freq-fig",
-                        figure=DEFAULT_FIGURES[2]
+                    dcc.Loading(
+                        id="loading-freq",
+                        children=[dcc.Graph(id="freq-fig")]
                     )
                 ]
             ),
@@ -248,21 +251,24 @@ def update_ray(clickData, session_id):
 #     data, datetimes = get_data(session_id, date)
 #     return get_figure1(data, datetimes)
 
-# @app.callback([Output('main-fig', 'figure'),
-#                Output('one-ray-fig', 'figure'),
-#                Output('freq-fig', 'figure')],
-#               [Input('refresh', 'n_clicks'),
-#                Input('curr-ray', 'data')],
-#               [State('session-id', 'data'),
-#                State('date', 'date'),
-#                State('hour', 'value'),
-#                State('minute', 'value')])
-# def update_graphs(n, new_ray, session_id, date, hour, minute):
-#     data, datetimes = get_data(session_id, date, hour, minute, stand=1)
-#     fig1 = get_figure1(data, datetimes)
-#     fig2 = get_figure2(data, datetimes, new_ray)
-#     fig3 = get_figure3(data, datetimes, new_ray)
-#     return fig1, fig2, fig3
+@app.callback([Output('main-fig', 'figure'),
+               Output('one-ray-fig', 'figure'),
+               Output('freq-fig', 'figure')],
+              [Input('refresh', 'n_clicks'),
+               Input('curr-ray', 'data')],
+              [State('session-id', 'data'),
+               State('date', 'date'),
+               State('hour', 'value'),
+               State('minute', 'value')])
+def update_graphs(n, new_ray, session_id, date, hour, minute):
+    pr.dump_stats('log.txt')
+    data, datetimes = get_data(session_id, date, hour, minute, stand=1)
+    fig1 = get_figure1(data, datetimes)
+    fig2 = get_figure2(data, datetimes, new_ray)
+    fig3 = get_figure3(data, datetimes, new_ray)
+    logger.info("All figures set up. Refreshing layout")
+    pr.enable()
+    return fig1, fig2, fig3
 # #
 # @app.callback(Output('freq-graph', 'figure'),
 #               [Input('session-id', 'data'),

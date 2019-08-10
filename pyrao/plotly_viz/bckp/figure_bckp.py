@@ -3,7 +3,7 @@ import logging
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime as dt
-from plotly.graph_objs import Scatter, Scattergl, Figure, Layout
+from plotly.graph_objs import Scatter, Scattergl, Figure
 from plotly.graph_objs.layout import XAxis, YAxis, Annotation, Font
 from plotly import tools
 
@@ -24,80 +24,56 @@ def setup_figure(data, datetimes, use_gradient, show_yaxis_ticks, height):
     ]
     domains = np.linspace(1, 0, n_channels + 1)
 
-    # fig = tools.make_subplots(
-    #     rows=n_channels,
-    #     cols=1,
-    #     # specs=[[{}]] * n_channels,
-    #     shared_xaxes=True,
-    #     shared_yaxes=True,
-    #     vertical_spacing=-5,
-    #     print_grid=False
-    # )
+    fig = tools.make_subplots(
+        rows=n_channels,
+        cols=1,
+        # specs=[[{}]] * n_channels,
+        shared_xaxes=True,
+        shared_yaxes=True,
+        vertical_spacing=-5,
+        print_grid=False
+    )
 
     traces = create_traces(data, datetimes, n_channels, use_gradient)
+    logger.info("Appending traces")
     # for i, trace in tqdm(enumerate(traces), desc='Appending traces to figure'):
     #     fig.append_trace(trace, i + 1, 1)
-    # for i, trace in tqdm(enumerate(traces), desc='Updating layout'):
-    #     fig['layout'].update({
-    #         f'yaxis{i + 1}': YAxis({
-    #             'domain': np.flip(domains[i:i + 2], axis=0),
-    #             'showticklabels': show_yaxis_ticks,
-    #             'zeroline': False,
-    #             'showgrid': False,
-    #             'automargin': False
-    #         }),
-    #         'showlegend': False,
-    #         'margin': {'t': 0, 'l': 0}
-    #     })
-
-    layout = Layout(
-        **{
+    for i, trace in tqdm(enumerate(traces), desc='Updating layout'):
+        fig['layout'].update({
             f'yaxis{i + 1}': YAxis({
                 'domain': np.flip(domains[i:i + 2], axis=0),
                 'showticklabels': show_yaxis_ticks,
                 'zeroline': False,
                 'showgrid': False,
                 'automargin': False
-            }) for i in range(len(traces))
-        },
-        showlegend=False,
-        autosize=False,
-        height=height,
-        margin={'t': 0, 'l': 0}
-    )
-    logger.info("Appending traces")
+            }),
+            'showlegend': False,
+            'margin': {'t': 0, 'l': 0}
+        })
 
-    fig = tools.return_figure_from_figure_or_data(
-        {
-            'data': traces,
-            'layout': layout
-        },
-        validate_figure=False
-    )
+    fig['data'] = traces
 
-    # fig = Figure(data=traces, layout=layout)
-    #
     if not show_yaxis_ticks:
         annotations = create_annotations(data, n_channels)
         fig['layout'].update(annotations=annotations)
-    #
-    # fig['layout'].update(autosize=False, height=height)
 
-    fig['layout']['xaxis'].update(side='top')
-    fig['layout']['xaxis'].update(tickformat='%H:%M:%S:%L')
-    fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
-
+    fig['layout'].update(autosize=False, height=height)
+    # fig['layout']['xaxis'].update(side='top')
+    # fig['layout']['xaxis'].update(tickformat='%H:%M:%S:%L')
+    # fig['layout']['xaxis'].update(mirror='allticks', side='bottom')
 
     logger.info("Figure set up")
     return fig
+
 
 def create_traces(data, datetimes, n_channels, use_gradient):
     logger.info("Creating traces")
     traces = [
         Scattergl(
+            id=i + 1,
             x=datetimes,
             y=data[:, i],
-            #xaxis=f'x{i + 1}',
+            xaxis=f'x{i + 1}',
             yaxis=f'y{i + 1}',
             line={
                 'color': ('rgb(0, 0, 255)'),

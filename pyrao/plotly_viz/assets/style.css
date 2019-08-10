@@ -106,3 +106,9 @@ footer {
   height: 33px;
   float: left;
 }
+
+#loading-main,
+#loading-one-ray,
+#loading-freq {
+  vertical-align: middle;
+}
