@@ -27,7 +27,7 @@ BSAData.PATH_CALB = config['PATH_CALB']
 def _read_file(date, stand):
     data = BSAData()
     data.read(date, stand)
-    # data.calibrate(filename='eq_1_6b_20160101_20161231')
+    data.calibrate(filename='eq_1_6b_20160101_20161231')
     return data
 
 

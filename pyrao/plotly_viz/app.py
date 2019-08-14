@@ -20,9 +20,9 @@ from data import get_data, get_available_dates
 from figure import get_figure1, get_figure2, get_figure3
 from figure import get_figures
 
-import cProfile, pstats, io
-from pstats import SortKey
-pr = cProfile.Profile()
+# import cProfile, pstats, io
+# from pstats import SortKey
+# pr = cProfile.Profile()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -250,7 +250,7 @@ def update_ray(clickData, session_id):
 #     logger.info(f"datetime-picker {date}: {type(date)}")
 #     data, datetimes = get_data(session_id, date)
 #     return get_figure1(data, datetimes)
-
+import json
 @app.callback([Output('main-fig', 'figure'),
                Output('one-ray-fig', 'figure'),
                Output('freq-fig', 'figure')],
@@ -261,13 +261,13 @@ def update_ray(clickData, session_id):
                State('hour', 'value'),
                State('minute', 'value')])
 def update_graphs(n, new_ray, session_id, date, hour, minute):
-    pr.dump_stats('log.txt')
+    # pr.dump_stats('log2.txt')
     data, datetimes = get_data(session_id, date, hour, minute, stand=1)
     fig1 = get_figure1(data, datetimes)
     fig2 = get_figure2(data, datetimes, new_ray)
     fig3 = get_figure3(data, datetimes, new_ray)
     logger.info("All figures set up. Refreshing layout")
-    pr.enable()
+    # pr.enable()
     return fig1, fig2, fig3
 # #
 # @app.callback(Output('freq-graph', 'figure'),
