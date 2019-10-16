@@ -10,7 +10,7 @@ Vizualization - модуль для визуализации данных. Он 
 
 Analysis - модуль отвечает за преобразование данных в матрицу объекты-признаки и последующую классификацию этих объектов.
 
-## Установка
+
 
 Для того, чтобы установить пакет локально, воспользуйтесь pip
 
@@ -22,6 +22,21 @@ pip install pyrao
 
 ```
 pip install pyrao --install-option --no-cython-build
+```
+
+## Быстрый старт
+
+```
+from pyrao import BSAData
+
+path1 = './path/to/obs_N1.pnthr'
+path2 = './path/to/obs_N1.txt'
+
+data = BSAData()
+data.read(path1)
+data.calibrate(path2)
+
+data.data  # Итоговый массив с откалиброванными данными
 ```
 
 ## Использование модуля интеграции
