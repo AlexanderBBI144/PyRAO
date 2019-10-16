@@ -26,7 +26,9 @@ pip install pyrao --install-option --no-cython-build
 
 ## Быстрый старт
 
-```
+Для того чтобы прочитать и откалибровать файл, лежащий по адресу `path1` с помощью калибровочного файла, лежащего по адресу `path2`, нужно запустить следующий скрипт
+
+```python
 from pyrao import BSAData
 
 path1 = './path/to/obs_N1.pnthr'
