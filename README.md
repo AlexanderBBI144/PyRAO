@@ -1,3 +1,5 @@
+Репозиторий больше не обновляется и помещен в архив.
+
 # PyRAO
 [![Build Status](https://travis-ci.com/AlexanderBBI144/PyRAO.svg?token=ozxy7p2TNCb5qyxsXwn7&branch=master)](https://travis-ci.com/AlexanderBBI144/PyRAO)
 ## Описание
